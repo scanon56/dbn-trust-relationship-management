@@ -79,7 +79,7 @@ jobs:
           path: coverage
 
       - name: Publish coverage badge (gh-badges branch)
-        if: success()
+        if: success() && github.event_name == 'push'
         run: |
           set -euo pipefail
           # Ensure coverage summary exists
