@@ -1,5 +1,8 @@
 # DBN Trust Relationship Management
 
+![CI](https://github.com/scanon56/dbn-trust-relationship-management/actions/workflows/ci.yml/badge.svg?branch=main)
+![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/scanon56/dbn-trust-relationship-management/gh-badges/badges/coverage.json)
+
 Phase 2 of the Decentralized Business Network Platform - DIDComm-based peer-to-peer connection and message management.
 
 ## Overview

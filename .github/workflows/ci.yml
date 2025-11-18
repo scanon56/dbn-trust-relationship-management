@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [ main, master ]
 
+permissions:
+  contents: write
+
 jobs:
   build-test:
     runs-on: ubuntu-latest
@@ -66,7 +69,7 @@ jobs:
           DB_PASSWORD: postgres
           PHASE4_BASE_URL: http://localhost:3000
           DOTENV_CONFIG_SILENT: 'true'
-        run: npm test -- --ci --colors
+        run: npm test -- --ci --colors --coverage
 
       - name: Upload coverage
         if: success()
@@ -74,3 +77,41 @@ jobs:
         with:
           name: coverage-report
           path: coverage
+
+      - name: Publish coverage badge (gh-badges branch)
+        if: success()
+        run: |
+          set -euo pipefail
+          # Ensure coverage summary exists
+          if [ ! -f coverage/coverage-summary.json ]; then
+            echo "coverage/coverage-summary.json not found" >&2
+            exit 1
+          fi
+
+          # Extract Statements % and compute color
+          node -e '
+            const fs = require("fs");
+            const sum = JSON.parse(fs.readFileSync("coverage/coverage-summary.json", "utf8"));
+            const pct = Math.round(Number(sum.total.statements.pct || 0));
+            const color = pct>=90?"brightgreen":pct>=80?"green":pct>=70?"yellowgreen":pct>=60?"yellow":pct>=50?"orange":"red";
+            const badge = { schemaVersion:1, label:"coverage", message:`${pct}%`, color };
+            fs.mkdirSync("badges", { recursive: true });
+            fs.writeFileSync("badges/coverage.json", JSON.stringify(badge));
+          '
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          # Fetch branch if exists; then create/update local branch
+          git fetch origin gh-badges || true
+          if git show-ref --verify --quiet refs/remotes/origin/gh-badges; then
+            git checkout -B gh-badges origin/gh-badges
+          else
+            git checkout -B gh-badges
+          fi
+
+          mkdir -p badges
+          cp -f badges/coverage.json badges/coverage.json
+          git add badges/coverage.json
+          git commit -m "chore(badge): update coverage [skip ci]" || echo "No badge changes"
+          git push origin gh-badges
