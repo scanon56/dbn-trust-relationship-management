@@ -61,69 +61,12 @@ The Trust Relationship Management service provides:
 - PostgreSQL 16+
 - Phase 4 DID Service running on port 3000
 
-## Installation
-```bash
-# Clone repository
-git clone <repository-url>
-cd dbn-trust-relationship-management
+## Support
 
-# Install dependencies
-npm install
-
-# Copy environment template
-cp .env.example .env
-
-# Edit .env with your configuration
-nano .env
-
-# Run database migrations
-npm run migrate
-```
-
-### Using Docker Compose (Optional)
-```bash
-# Start Postgres + pgAdmin
-docker compose up -d postgres pgadmin
-
-# Copy environment template and keep the standard credentials
-cp .env.example .env
-# Ensure `.env` has:
-# DB_NAME=dbn_trust_management
-# DB_USER=postgres
-# DB_PASSWORD=postgres
-
-# Run migrations
-npm run migrate
-```
-
-### Testing
-```bash
-# Run all tests
-npm test
-
-# Run tests in watch mode
-npm run test:watch
-
-# Generate coverage report
-npm run test:coverage
-```
-
-### Database Management
-```bash
-# Run migrations
-npm run migrate
-
-# Reset database (drop all data)
-psql -U postgres -d dbn_trust_management -c "TRUNCATE TABLE messages, connections, protocol_capabilities CASCADE"
-```
-
-#### Helper Scripts
-```bash
-# Open interactive psql using env vars
-./scripts/db-shell.sh
-
-# Reset schema (DESTROYS DATA) then run migrations
-./scripts/db-reset.sh
+For issues and questions:
+- GitHub Issues: [Repository Issues]
+- Documentation: `/docs`
+- Email: support@example.com
 ```
 
 #### Credential Sets
@@ -137,7 +80,7 @@ Set these via `.env` (see `.env.example`). If your local PostgreSQL uses a diffe
 
 ## API Documentation
 
-Full API documentation is available via the OpenAPI specification at `/api/v1/docs` (when Swagger UI is integrated).
+Full API documentation is available via the OpenAPI specification at `/api-docs` (when Swagger UI is integrated).
 
 ### Key Endpoints
 
@@ -149,6 +92,8 @@ Full API documentation is available via the OpenAPI specification at `/api/v1/do
 - `PATCH /api/v1/connections/:id` - Update metadata
 - `DELETE /api/v1/connections/:id` - Delete connection
 - `POST /api/v1/connections/:id/ping` - Send trust ping
+ - `GET /api/v1/connections/:id/capabilities` - Get discovered capabilities
+ - `POST /api/v1/connections/:id/capabilities/refresh` - Refresh capabilities from DID Document
 
 **Messages:**
 - `POST /api/v1/messages` - Send message
@@ -159,7 +104,7 @@ Full API documentation is available via the OpenAPI specification at `/api/v1/do
 - `POST /api/v1/messages/:id/retry` - Retry failed message
 
 **DIDComm Transport:**
-- `POST /didcomm?did={recipientDid}` - Receive encrypted DIDComm message
+- `POST /didcomm?did={recipientDid}` - Receive encrypted DIDComm message (Content-Type: `application/didcomm-encrypted+json`)
 
 ## Example Flows
 
@@ -228,8 +173,8 @@ dbn-trust-relationship-management/
 │   └── server.ts            # Express server
 ├── tests/
 │   ├── unit/               # Unit tests
-│   ├── integration/        # Integration tests
-│   └── helpers/            # Test helpers
+│   ├── helpers/            # Test helpers
+│   └── setup.ts            # Jest setup
 ├── docs/
 │   ├── architecture.md     # Architecture documentation
 │   └── protocols.md        # Protocol specifications

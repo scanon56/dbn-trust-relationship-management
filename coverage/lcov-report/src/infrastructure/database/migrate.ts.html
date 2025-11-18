@@ -23,9 +23,9 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">76.78% </span>
+                <span class="strong">77.58% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>43/56</span>
+                <span class='fraction'>45/58</span>
             </div>
         
             
@@ -44,9 +44,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">76.36% </span>
+                <span class="strong">77.19% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>42/55</span>
+                <span class='fraction'>44/57</span>
             </div>
         
             
@@ -193,7 +193,9 @@
 <a name='L128'></a><a href='#L128'>128</a>
 <a name='L129'></a><a href='#L129'>129</a>
 <a name='L130'></a><a href='#L130'>130</a>
-<a name='L131'></a><a href='#L131'>131</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L131'></a><a href='#L131'>131</a>
+<a name='L132'></a><a href='#L132'>132</a>
+<a name='L133'></a><a href='#L133'>133</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-yes">4x</span>
 <span class="cline-any cline-yes">4x</span>
@@ -216,6 +218,7 @@
 <span class="cline-any cline-yes">5x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -284,6 +287,7 @@
 <span class="cline-any cline-no">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
@@ -344,16 +348,17 @@ async function runMigrations(): Promise&lt;void&gt; {
   let client;
   try {
     client = await pool.connect();
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Provide clearer guidance for common connection failures
-    if (error?.code === 'ECONNREFUSED') {
+    const err = error as { code?: string; message?: string };
+    if (err?.code === 'ECONNREFUSED') {
       logger.error('Cannot connect to PostgreSQL (ECONNREFUSED).', {
         hint:
           'Ensure PostgreSQL is running and listening on the configured host/port. On macOS (Homebrew): `brew services start postgresql` or `brew services start postgresql@16`. Then verify with `psql -h localhost -p 5432 -U postgres -d dbn_trust_management -c "SELECT 1"` or adjust your .env.',
         configuredHost: config.database.host,
         configuredPort: config.database.port,
       });
-    } else if (error?.code === '28P01') {
+    } else if (err?.code === '28P01') {
       logger.error('Password authentication failed for PostgreSQL user.', {
         user: config.database.user,
         hint:
@@ -361,8 +366,8 @@ async function runMigrations(): Promise&lt;void&gt; {
       });
     } else <span class="missing-if-branch" title="else path not taken" >E</span>{
 <span class="cstat-no" title="statement not covered" >      logger.error('Failed to obtain a DB connection', {</span>
-        code: error?.code,
-        message: error?.message,
+        code: err?.code,
+        message: err?.message,
       });
     }
     throw error;
@@ -412,10 +417,11 @@ async function runMigrations(): Promise&lt;void&gt; {
           );
 <span class="cstat-no" title="statement not covered" >          await client.query('COMMIT');</span>
 <span class="cstat-no" title="statement not covered" >          logger.info(`Migration ${version} completed successfully`);</span>
-        } catch (execError: any) {
+        } catch (execError: unknown) {
           // Allow idempotent re-run: duplicate table/index errors
-          const message = execError?.message || <span class="branch-1 cbranch-no" title="branch not covered" >'';</span>
-          if (execError?.code === '42P07' || <span class="branch-1 cbranch-no" title="branch not covered" >message.includes('already exists'))</span> {
+          const e = execError as { code?: string; message?: string };
+          const message = e?.message || <span class="branch-1 cbranch-no" title="branch not covered" >'';</span>
+          if (e?.code === '42P07' || <span class="branch-1 cbranch-no" title="branch not covered" >message.includes('already exists'))</span> {
             logger.warn(`Migration ${version} encountered existing objects; treating as already applied`);
             await client.query('ROLLBACK');
             // Record as executed if not already
@@ -460,7 +466,7 @@ export { runMigrations };</pre></td></tr></table></pre>
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-11-17T17:18:26.142Z
+                at 2025-11-18T14:55:22.998Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>
