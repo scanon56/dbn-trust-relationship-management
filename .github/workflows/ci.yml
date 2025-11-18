@@ -1,0 +1,76 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        ports:
+          - 5432:5432
+        env:
+          POSTGRES_DB: dbn_trust_management
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        options: >-
+          --health-cmd="pg_isready -U postgres" --health-interval=10s --health-timeout=5s --health-retries=5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Wait for Postgres
+        run: |
+          if ! command -v pg_isready >/dev/null; then
+            sudo apt-get update && sudo apt-get install -y postgresql-client
+          fi
+          for i in {1..30}; do
+            if pg_isready -h localhost -p 5432 -U postgres; then
+              echo "Postgres is ready"; break
+            fi
+            echo "Waiting for Postgres..."; sleep 2
+          done
+
+      - name: Run migrations
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: dbn_trust_management
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+        run: npm run migrate
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Run tests
+        env:
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: dbn_trust_management
+          DB_USER: postgres
+          DB_PASSWORD: postgres
+          PHASE4_BASE_URL: http://localhost:3000
+          DOTENV_CONFIG_SILENT: 'true'
+        run: npm test -- --ci --colors
+
+      - name: Upload coverage
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: coverage
