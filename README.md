@@ -85,10 +85,12 @@ npm run migrate
 # Start Postgres + pgAdmin
 docker compose up -d postgres pgadmin
 
-# Copy environment template and select Docker credentials
+# Copy environment template and keep the standard credentials
 cp .env.example .env
-# Edit .env: uncomment dbn_user/dbn_password/dbn_platform block
-sed -n '1,120p' .env
+# Ensure `.env` has:
+# DB_NAME=dbn_trust_management
+# DB_USER=postgres
+# DB_PASSWORD=postgres
 
 # Run migrations
 npm run migrate
@@ -125,12 +127,13 @@ psql -U postgres -d dbn_trust_management -c "TRUNCATE TABLE messages, connection
 ```
 
 #### Credential Sets
-| Scenario | DB_NAME | DB_USER | DB_PASSWORD |
-|----------|---------|---------|-------------|
-| Default local | dbn_trust_management | postgres | postgres |
-| Docker compose | dbn_platform | dbn_user | dbn_password |
+This project uses a single, standardized database configuration for both local and Docker environments:
 
-Switch by editing `.env` (see `.env.example`).
+- DB_NAME: `dbn_trust_management`
+- DB_USER: `postgres`
+- DB_PASSWORD: `postgres`
+
+Set these via `.env` (see `.env.example`). If your local PostgreSQL uses a different role or password, update the variables accordingly.
 
 ## API Documentation
 

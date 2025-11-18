@@ -47,7 +47,7 @@ export class CapabilityDiscovery {
         services: (services || []).map((s: DIDDocumentService) => ({
           id: s.id,
           type: s.type,
-          serviceEndpoint: s.serviceEndpoint,
+          serviceEndpoint: this.normalizeServiceEndpoint(s.serviceEndpoint),
           protocols: s.protocols,
         })),
       };
@@ -96,6 +96,19 @@ export class CapabilityDiscovery {
     }
     
     return undefined;
+  }
+
+  /**
+   * Normalize DID Document serviceEndpoint to allowed `ServiceEndpoint.serviceEndpoint` type
+   */
+  private normalizeServiceEndpoint(
+    serviceEndpoint: string | string[] | { uri?: string; url?: string; serviceEndpoint?: string } | undefined
+  ): string | Record<string, unknown> {
+    if (!serviceEndpoint) return {};
+    if (typeof serviceEndpoint === 'string') return serviceEndpoint;
+    if (Array.isArray(serviceEndpoint)) return serviceEndpoint[0] ?? '';
+    if (typeof serviceEndpoint === 'object') return serviceEndpoint as Record<string, unknown>;
+    return {};
   }
 
   /**
