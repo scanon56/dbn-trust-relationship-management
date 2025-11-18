@@ -4,7 +4,7 @@ import { z } from 'zod';
 export const sendMessageSchema = z.object({
   connectionId: z.string().uuid('Invalid connection ID'),
   type: z.string().min(1, 'Message type is required'),
-  body: z.record(z.string(), z.any()).refine( // Fixed: added key type
+  body: z.record(z.string(), z.unknown()).refine(
     (val) => Object.keys(val).length > 0,
     'Message body cannot be empty'
   ),

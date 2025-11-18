@@ -1,9 +1,10 @@
 // src/types/protocol.types.ts
 import { DIDCommMessage } from './didcomm.types';
+import { Connection } from './connection.types';
 
 export interface MessageContext {
   connectionId?: string;
-  connection?: any; // Full connection object if available
+  connection?: Connection; // Full connection object if available
   direction: 'inbound' | 'outbound';
   transport: 'http' | 'websocket';
   encrypted: boolean;

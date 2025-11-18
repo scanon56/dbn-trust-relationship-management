@@ -19,16 +19,17 @@ async function runMigrations(): Promise<void> {
   let client;
   try {
     client = await pool.connect();
-  } catch (error: any) {
+  } catch (error: unknown) {
     // Provide clearer guidance for common connection failures
-    if (error?.code === 'ECONNREFUSED') {
+    const err = error as { code?: string; message?: string };
+    if (err?.code === 'ECONNREFUSED') {
       logger.error('Cannot connect to PostgreSQL (ECONNREFUSED).', {
         hint:
           'Ensure PostgreSQL is running and listening on the configured host/port. On macOS (Homebrew): `brew services start postgresql` or `brew services start postgresql@16`. Then verify with `psql -h localhost -p 5432 -U postgres -d dbn_trust_management -c "SELECT 1"` or adjust your .env.',
         configuredHost: config.database.host,
         configuredPort: config.database.port,
       });
-    } else if (error?.code === '28P01') {
+    } else if (err?.code === '28P01') {
       logger.error('Password authentication failed for PostgreSQL user.', {
         user: config.database.user,
         hint:
@@ -36,8 +37,8 @@ async function runMigrations(): Promise<void> {
       });
     } else {
       logger.error('Failed to obtain a DB connection', {
-        code: error?.code,
-        message: error?.message,
+        code: err?.code,
+        message: err?.message,
       });
     }
     throw error;
@@ -87,10 +88,11 @@ async function runMigrations(): Promise<void> {
           );
           await client.query('COMMIT');
           logger.info(`Migration ${version} completed successfully`);
-        } catch (execError: any) {
+        } catch (execError: unknown) {
           // Allow idempotent re-run: duplicate table/index errors
-          const message = execError?.message || '';
-          if (execError?.code === '42P07' || message.includes('already exists')) {
+          const e = execError as { code?: string; message?: string };
+          const message = e?.message || '';
+          if (e?.code === '42P07' || message.includes('already exists')) {
             logger.warn(`Migration ${version} encountered existing objects; treating as already applied`);
             await client.query('ROLLBACK');
             // Record as executed if not already

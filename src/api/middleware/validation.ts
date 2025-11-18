@@ -38,7 +38,7 @@ export function validateQuery(schema: z.ZodSchema) {
     try {
       const parsed = await schema.parseAsync(req.query);
       // Express 5 request.query may be a getter-only; avoid direct reassignment
-      Object.assign(req.query as any, parsed);
+      Object.assign(req.query as Record<string, unknown>, parsed as Record<string, unknown>);
       next();
     } catch (error) {
       if (error instanceof ZodError) {
@@ -68,7 +68,7 @@ export function validateParams(schema: z.ZodSchema) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
       const parsed = await schema.parseAsync(req.params);
-      Object.assign(req.params as any, parsed);
+      Object.assign(req.params as Record<string, unknown>, parsed as Record<string, unknown>);
       next();
     } catch (error) {
       if (error instanceof ZodError) {

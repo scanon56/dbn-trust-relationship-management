@@ -7,6 +7,8 @@ import {
   sendMessageSchema,
   listMessagesQuerySchema,
   searchMessagesQuerySchema,
+  type ListMessagesQuery,
+  type SearchMessagesQuery,
 } from '../schemas/message.schema';
 
 const router = Router();
@@ -50,7 +52,7 @@ router.get(
   validateQuery(listMessagesQuerySchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const query = req.query as any;
+      const query = req.query as unknown as ListMessagesQuery;
       
       const result = await messageService.listMessages({
         connectionId: query.connectionId,
@@ -86,7 +88,7 @@ router.get(
   validateQuery(searchMessagesQuerySchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const query = req.query as any;
+      const query = req.query as unknown as SearchMessagesQuery;
       
       const result = await messageService.searchMessages(query.q, {
         connectionId: query.connectionId,

@@ -8,6 +8,7 @@ import {
   acceptInvitationSchema,
   updateConnectionMetadataSchema,
   listConnectionsQuerySchema,
+  type ListConnectionsQuery,
 } from '../schemas/connection.schema';
 
 const router = Router();
@@ -72,7 +73,7 @@ router.get(
   validateQuery(listConnectionsQuerySchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const query = req.query as any;
+      const query = req.query as unknown as ListConnectionsQuery;
       
       // Parse comma-separated arrays
       const protocols = query.protocols 

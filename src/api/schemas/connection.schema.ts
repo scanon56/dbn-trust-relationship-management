@@ -9,7 +9,7 @@ export const createInvitationSchema = z.object({
 });
 
 export const acceptInvitationSchema = z.object({
-  invitation: z.union([z.string(), z.record(z.string(), z.any())]), // Fixed: added key type
+  invitation: z.union([z.string(), z.record(z.string(), z.unknown())]),
   myDid: z.string().min(1, 'myDid is required'),
   label: z.string().optional(),
 });
@@ -18,7 +18,7 @@ export const updateConnectionMetadataSchema = z.object({
   theirLabel: z.string().optional(),
   tags: z.array(z.string()).optional(),
   notes: z.string().optional(),
-  metadata: z.record(z.string(), z.any()).optional(), // Fixed: added key type
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const listConnectionsQuerySchema = z.object({

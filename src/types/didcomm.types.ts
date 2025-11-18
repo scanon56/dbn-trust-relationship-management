@@ -12,9 +12,7 @@ export interface DIDCommMessage {
   attachments?: unknown[];
 }
 
-export interface DIDCommPlaintextMessage extends DIDCommMessage {
-  // Plaintext version of DIDComm message
-}
+export type DIDCommPlaintextMessage = DIDCommMessage;
 
 export interface DIDCommEncryptedMessage {
   // JWE encrypted message (string)
@@ -23,4 +21,18 @@ export interface DIDCommEncryptedMessage {
   recipients: unknown[];
   iv: string;
   tag: string;
+}
+
+// Minimal DID Document shape used by capability discovery
+export interface DIDDocumentService {
+  id: string;
+  type: string | string[];
+  serviceEndpoint: string | string[] | { uri?: string; url?: string; serviceEndpoint?: string };
+  protocols?: string[];
+}
+
+export interface DIDDocument {
+  id?: string;
+  service?: DIDDocumentService[];
+  [key: string]: unknown;
 }

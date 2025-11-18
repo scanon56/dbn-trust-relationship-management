@@ -112,7 +112,7 @@ export class MessageRepository {
     offset?: number;
   }): Promise<{ messages: Message[]; total: number }> {
     const conditions: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
     let paramCount = 0;
 
     if (filters.connectionId) {
@@ -252,7 +252,7 @@ export class MessageRepository {
     offset?: number;
   }): Promise<{ messages: Message[]; total: number }> {
     const conditions: string[] = ['tsv @@ plainto_tsquery($1)'];
-    const values: any[] = [searchText];
+    const values: unknown[] = [searchText];
     let paramCount = 1;
 
     if (filters.connectionId) {
@@ -309,7 +309,25 @@ export class MessageRepository {
   /**
    * Map database row to Message object
    */
-  private mapRowToMessage(row: any): Message {
+  private mapRowToMessage(row: {
+    id: string;
+    message_id: string;
+    thread_id?: string | null;
+    parent_id?: string | null;
+    connection_id?: string | null;
+    type: string;
+    direction: MessageDirection;
+    from_did: string;
+    to_dids: string[];
+    body: Record<string, unknown>;
+    attachments?: unknown[] | null;
+    state: MessageState;
+    error_message?: string | null;
+    retry_count?: number;
+    metadata?: Record<string, unknown> | null;
+    created_at: Date;
+    processed_at?: Date | null;
+  }): Message {
     return {
       id: row.id,
       messageId: row.message_id,

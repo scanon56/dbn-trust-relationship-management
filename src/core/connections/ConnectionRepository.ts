@@ -1,6 +1,6 @@
 // src/core/connections/ConnectionRepository.ts
 import { pool } from '../../infrastructure/database/pool';
-import { Connection, ConnectionState } from '../../types/connection.types';
+import { Connection, ConnectionState, OutOfBandInvitation, ServiceEndpoint } from '../../types/connection.types';
 import { logger } from '../../utils/logger';
 import { ConnectionError } from '../../utils/errors';
 
@@ -16,7 +16,7 @@ export class ConnectionRepository {
     state: ConnectionState;
     role: 'inviter' | 'invitee';
     theirEndpoint?: string;
-    invitation?: any;
+    invitation?: string | OutOfBandInvitation | null;
     invitationUrl?: string;
     metadata?: Record<string, unknown>;
   }): Promise<Connection> {
@@ -103,7 +103,7 @@ export class ConnectionRepository {
     offset?: number;
   }): Promise<{ connections: Connection[]; total: number }> {
     const conditions: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
     let paramCount = 0;
 
     if (filters.myDid) {
@@ -200,10 +200,10 @@ export class ConnectionRepository {
   async updateCapabilities(id: string, data: {
     theirEndpoint?: string;
     theirProtocols?: string[];
-    theirServices?: any[];
+    theirServices?: ServiceEndpoint[];
   }): Promise<Connection> {
     const updates: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
     let paramCount = 0;
 
     if (data.theirEndpoint !== undefined) {
@@ -258,7 +258,7 @@ export class ConnectionRepository {
     metadata?: Record<string, unknown>;
   }): Promise<Connection> {
     const updates: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
     let paramCount = 0;
 
     if (data.theirLabel !== undefined) {
@@ -322,7 +322,25 @@ export class ConnectionRepository {
   /**
    * Map database row to Connection object
    */
-  private mapRowToConnection(row: any): Connection {
+  private mapRowToConnection(row: {
+    id: string;
+    my_did: string;
+    their_did: string;
+    their_label?: string | null;
+    state: ConnectionState;
+    role: 'inviter' | 'invitee';
+    their_endpoint?: string | null;
+    their_protocols?: string[] | null;
+    their_services?: ServiceEndpoint[] | null;
+    invitation?: string | OutOfBandInvitation | null;
+    invitation_url?: string | null;
+    tags?: string[] | null;
+    notes?: string | null;
+    metadata?: Record<string, unknown> | null;
+    created_at: Date;
+    updated_at: Date;
+    last_active_at?: Date | null;
+  }): Connection {
     return {
       id: row.id,
       myDid: row.my_did,

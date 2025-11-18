@@ -2,6 +2,7 @@
 import { phase4Client } from '../../infrastructure/clients/phase4Client';
 import { logger } from '../../utils/logger';
 import { ServiceEndpoint } from '../../types/connection.types';
+import { DIDDocument, DIDDocumentService } from '../../types/didcomm.types';
 
 export interface DiscoveredCapabilities {
   endpoint?: string;
@@ -19,11 +20,11 @@ export class CapabilityDiscovery {
 
     try {
       // Resolve DID to get DID Document
-      const didDocument = await phase4Client.getDIDDocument(did);
+      const didDocument: DIDDocument = await phase4Client.getDIDDocument(did);
       
       // Extract DIDComm service endpoints
-      const services = didDocument.service || [];
-      const didcommServices = services.filter((s: any) => 
+      const services: DIDDocument['service'] = didDocument.service || [];
+      const didcommServices = (services || []).filter((s: DIDDocumentService) => 
         this.isDIDCommService(s.type)
       );
 
@@ -34,7 +35,7 @@ export class CapabilityDiscovery {
 
       // Extract protocols from all services
       const protocols = new Set<string>();
-      services.forEach((service: any) => {
+      (services || []).forEach((service: DIDDocumentService) => {
         if (service.protocols && Array.isArray(service.protocols)) {
           service.protocols.forEach((p: string) => protocols.add(p));
         }
@@ -43,7 +44,7 @@ export class CapabilityDiscovery {
       const capabilities: DiscoveredCapabilities = {
         endpoint: primaryEndpoint,
         protocols: Array.from(protocols),
-        services: services.map((s: any) => ({
+        services: (services || []).map((s: DIDDocumentService) => ({
           id: s.id,
           type: s.type,
           serviceEndpoint: s.serviceEndpoint,
@@ -79,7 +80,7 @@ export class CapabilityDiscovery {
   /**
    * Extract endpoint URL from service endpoint
    */
-  private extractEndpoint(serviceEndpoint: string | object | string[]): string | undefined {
+  private extractEndpoint(serviceEndpoint: string | Record<string, unknown> | string[]): string | undefined {
     if (typeof serviceEndpoint === 'string') {
       return serviceEndpoint;
     }
@@ -90,7 +91,7 @@ export class CapabilityDiscovery {
     
     if (typeof serviceEndpoint === 'object' && serviceEndpoint !== null) {
       // Handle object form like { uri: "..." }
-      const endpoint = serviceEndpoint as any;
+      const endpoint = serviceEndpoint as { uri?: string; url?: string; serviceEndpoint?: string };
       return endpoint.uri || endpoint.url || endpoint.serviceEndpoint;
     }
     

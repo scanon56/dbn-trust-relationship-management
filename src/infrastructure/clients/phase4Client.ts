@@ -1,6 +1,7 @@
 // src/infrastructure/clients/Phase4Client.ts
 import { config } from '../../config';
 import { logger } from '../../utils/logger';
+import { DIDDocument } from '../../types/didcomm.types';
 
 export class Phase4Client {
   private baseURL: string;
@@ -74,11 +75,11 @@ export class Phase4Client {
   }
 
   // DID Document operations
-  async getDIDDocument(did: string): Promise<any> {
-    return this.request(`/api/v1/dids/${encodeURIComponent(did)}/document`);
+  async getDIDDocument(did: string): Promise<DIDDocument> {
+    return this.request<DIDDocument>(`/api/v1/dids/${encodeURIComponent(did)}/document`);
   }
 
-  async resolveDID(did: string): Promise<any> {
+  async resolveDID(did: string): Promise<unknown> {
     return this.request(`/api/v1/dids/${encodeURIComponent(did)}/resolve`, {
       method: 'POST',
     });
@@ -90,7 +91,7 @@ export class Phase4Client {
     plaintext: string;
     from?: string;
   }): Promise<{ jwe: string; kid: string; from?: string }> {
-    const response = await this.request<{ data: any }>('/api/v1/didcomm/encrypt', {
+    const response = await this.request<{ data: { jwe: string; kid: string; from?: string } }>('/api/v1/didcomm/encrypt', {
       method: 'POST',
       body: JSON.stringify(params),
     });
@@ -100,8 +101,8 @@ export class Phase4Client {
   async decrypt(params: {
     did: string;
     jwe: string;
-  }): Promise<{ plaintext: string; header: any; kid: string }> {
-    const response = await this.request<{ data: any }>('/api/v1/didcomm/decrypt', {
+  }): Promise<{ plaintext: string; header: Record<string, unknown>; kid: string }> {
+    const response = await this.request<{ data: { plaintext: string; header: Record<string, unknown>; kid: string } }>('/api/v1/didcomm/decrypt', {
       method: 'POST',
       body: JSON.stringify(params),
     });
@@ -113,11 +114,11 @@ export class Phase4Client {
     did: string,
     params: {
       type: 'jwt' | 'jws';
-      payload: any;
+      payload: Record<string, unknown> | string;
       keyId?: string;
     }
   ): Promise<{ token: string; keyId: string; type: string }> {
-    const response = await this.request<{ data: any }>(
+    const response = await this.request<{ data: { token: string; keyId: string; type: string } }>(
       `/api/v1/dids/${encodeURIComponent(did)}/sign/jws`,
       {
         method: 'POST',
@@ -135,12 +136,12 @@ export class Phase4Client {
     }
   ): Promise<{
     verified: boolean;
-    header: any;
-    claims: any;
-    payload: any;
+    header: Record<string, unknown>;
+    claims: Record<string, unknown> | null;
+    payload: Record<string, unknown> | string | null;
     keyId: string;
   }> {
-    const response = await this.request<{ data: any }>(
+    const response = await this.request<{ data: { verified: boolean; header: Record<string, unknown>; claims: Record<string, unknown> | null; payload: Record<string, unknown> | string | null; keyId: string } }>(
       `/api/v1/dids/${encodeURIComponent(did)}/verify/jws`,
       {
         method: 'POST',
