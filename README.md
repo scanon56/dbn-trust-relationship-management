@@ -94,6 +94,7 @@ Full API documentation is available via the OpenAPI specification at `/api-docs`
 - `POST /api/v1/connections/:id/ping` - Send trust ping
  - `GET /api/v1/connections/:id/capabilities` - Get discovered capabilities
  - `POST /api/v1/connections/:id/capabilities/refresh` - Refresh capabilities from DID Document
+ - `POST /api/v1/connections/:id/activate` - Manually activate connection (dev helper)
 
 **Messages:**
 - `POST /api/v1/messages` - Send message
@@ -132,51 +133,9 @@ curl -X POST http://localhost:3001/api/v1/connections/accept-invitation \
   }'
 ```
 
-### 2. Send Message
+### 2. Activate Connection (Dev Helper)
 ```bash
-curl -X POST http://localhost:3001/api/v1/messages \
-  -H "Content-Type: application/json" \
-  -d '{
-    "connectionId": "<connection-id>",
-    "type": "https://didcomm.org/basicmessage/2.0/message",
-    "body": {
-      "content": "Hello Bob!"
-    }
-  }'
-```
-
-### 3. Trust Ping
-```bash
-curl -X POST http://localhost:3001/api/v1/connections/{connection-id}/ping
-```
-
-## Project Structure
-```
-dbn-trust-relationship-management/
-├── src/
-│   ├── api/
-│   │   ├── middleware/        # Express middleware
-│   │   ├── routes/           # API routes
-│   │   └── schemas/          # Zod validation schemas
-│   ├── core/
-│   │   ├── connections/      # Connection management
-│   │   ├── messages/         # Message handling
-│   │   ├── protocols/        # Protocol handlers
-│   │   └── discovery/        # Capability discovery
-│   ├── infrastructure/
-│   │   ├── clients/          # Phase 4 API client
-│   │   ├── database/         # Database migrations & pool
-│   │   └── transport/        # HTTP transport
-│   ├── types/               # TypeScript types
-│   ├── utils/               # Utilities (logger, errors)
-│   ├── config/              # Configuration
-│   └── server.ts            # Express server
-├── tests/
-│   ├── unit/               # Unit tests
-│   ├── helpers/            # Test helpers
-│   └── setup.ts            # Jest setup
-├── docs/
-│   ├── architecture.md     # Architecture documentation
+ 
 │   └── protocols.md        # Protocol specifications
 └── package.json
 ```
