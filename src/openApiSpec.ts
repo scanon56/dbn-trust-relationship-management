@@ -644,6 +644,46 @@ export const openapiSpec = {
         },
       },
     },
+    '/api/v1/connections/{id}/activate': {
+      post: {
+        summary: 'Manually activate connection',
+        tags: ['Connections'],
+        description: 'Temporary helper to auto-progress a connection through requested/responded to active for testing prior to full protocol support.',
+        operationId: 'activateConnection',
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          '200': {
+            description: 'Connection activated',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        connection: { $ref: '#/components/schemas/Connection' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '400': {
+            description: 'Invalid state for activation',
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ErrorResponse' },
+              },
+            },
+          },
+        },
+      },
+    },
     '/api/v1/messages': {
       post: {
         summary: 'Send message',

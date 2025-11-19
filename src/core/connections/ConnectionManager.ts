@@ -195,6 +195,35 @@ export class ConnectionManager {
   }
 
   /**
+   * Activate a connection by progressing through intermediate states.
+   * This is a temporary helper until full DIDComm connection protocol messages are implemented.
+   */
+  async activateConnection(id: string): Promise<Connection> {
+    let connection = await this.getConnection(id);
+
+    const progression: ConnectionState[] = ['invited', 'requested', 'responded', 'active'];
+    // If already active or beyond, return as-is
+    if (connection.state === 'active' || connection.state === 'completed') {
+      return connection;
+    }
+
+    // Walk progression from current state forward
+    const currentIndex = progression.indexOf(connection.state);
+    if (currentIndex === -1) {
+      throw new ConnectionError('Cannot activate from current state', 'INVALID_STATE_TRANSITION', { state: connection.state });
+    }
+
+    for (let i = currentIndex + 1; i < progression.length; i++) {
+      const target = progression[i];
+      ConnectionStateMachine.validateTransition(connection.state, target);
+      connection = await connectionRepository.updateState(id, target);
+      logger.info('Connection auto-progressed', { connectionId: id, newState: target });
+    }
+
+    return connection;
+  }
+
+  /**
    * Discover and update peer capabilities
    */
   async refreshCapabilities(id: string): Promise<Connection> {

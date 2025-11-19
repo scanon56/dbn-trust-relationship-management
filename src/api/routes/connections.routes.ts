@@ -242,4 +242,21 @@ router.post(
   }
 );
 
+/**
+ * Manually activate connection (temporary helper)
+ * POST /api/v1/connections/:id/activate
+ */
+router.post(
+  '/:id/activate',
+  validateParams(uuidParamSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const connection = await connectionManager.activateConnection(req.params.id);
+      res.status(200).json({ success: true, data: { connection } });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 export default router;
