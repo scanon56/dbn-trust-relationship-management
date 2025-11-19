@@ -9,6 +9,14 @@ Phase 2 of the Decentralized Business Network Platform - DIDComm-based peer-to-p
 
 The Trust Relationship Management service provides:
 - **DIDComm Connection Protocol** - Establish secure peer-to-peer connections
+### Database Helper (Quick Start)
+```bash
+# From project root
+./scripts/db-helper.sh test          # Check DB connectivity
+./scripts/db-helper.sh connections   # List recent connections
+./scripts/db-helper.sh console       # Open psql (exit with \q)
+```
+Requires `psql` in PATH and `.env` at the project root. See `scripts/README.md` for more.
 - **Message Exchange** - Send and receive encrypted DIDComm messages
 - **Protocol Handling** - Extensible protocol handler system
 - **Capability Discovery** - Discover peer capabilities from DID Documents
@@ -31,85 +39,8 @@ The Trust Relationship Management service provides:
 │                    (Port 3001)                      │
 │                                                     │
 │  ┌──────────────┐        ┌──────────────┐          │
-│  │  Connection  │        │   Message    │          │
-│  │  Manager     │        │   Router     │          │
-│  └──────┬───────┘        └──────┬───────┘          │
-│         │                       │                  │
 │         └───────────┬───────────┘                  │
-│                     │                              │
-│         ┌───────────▼───────────┐                  │
-│         │  Protocol Registry    │                  │
-│         │  - BasicMessage       │                  │
-│         │  - TrustPing          │                  │
-│         │  - Connection         │                  │
-│         └───────────────────────┘                  │
-│                                                     │
-│         ┌───────────────────────┐                  │
-│         │   PostgreSQL          │                  │
-│         └───────────────────────┘                  │
-└─────────────────┬───────────────────────────────────┘
-                  │
-        ┌─────────▼──────────┐
-        │  Phase 4 DID API   │
-        │  (Port 3000)       │
-        └────────────────────┘
 ```
-
-## Prerequisites
-
-- Node.js 20+
-- PostgreSQL 16+
-- Phase 4 DID Service running on port 3000
-
-## Support
-
-For issues and questions:
-- GitHub Issues: [Repository Issues]
-- Documentation: `/docs`
-- Email: support@example.com
-```
-
-#### Credential Sets
-This project uses a single, standardized database configuration for both local and Docker environments:
-
-- DB_NAME: `dbn_trust_management`
-- DB_USER: `postgres`
-- DB_PASSWORD: `postgres`
-
-Set these via `.env` (see `.env.example`). If your local PostgreSQL uses a different role or password, update the variables accordingly.
-
-## API Documentation
-
-Full API documentation is available via the OpenAPI specification at `/api-docs` (when Swagger UI is integrated).
-
-### Key Endpoints
-
-**Connections:**
-- `POST /api/v1/connections/invitations` - Create invitation
-- `POST /api/v1/connections/accept-invitation` - Accept invitation
-- `GET /api/v1/connections` - List connections
-- `GET /api/v1/connections/:id` - Get connection
-- `PATCH /api/v1/connections/:id` - Update metadata
-- `DELETE /api/v1/connections/:id` - Delete connection
-- `POST /api/v1/connections/:id/ping` - Send trust ping
- - `GET /api/v1/connections/:id/capabilities` - Get discovered capabilities
- - `POST /api/v1/connections/:id/capabilities/refresh` - Refresh capabilities from DID Document
- - `POST /api/v1/connections/:id/activate` - Manually activate connection (dev helper)
-
-**Messages:**
-- `POST /api/v1/messages` - Send message
-- `GET /api/v1/messages` - List messages
-- `GET /api/v1/messages/search` - Search messages
-- `GET /api/v1/messages/:id` - Get message
-- `GET /api/v1/messages/thread/:threadId` - Get thread
-- `POST /api/v1/messages/:id/retry` - Retry failed message
-
-**DIDComm Transport:**
-- `POST /didcomm?did={recipientDid}` - Receive encrypted DIDComm message (Content-Type: `application/didcomm-encrypted+json`)
-
-## Example Flows
-
-### 1. Establish Connection
 
 **Alice creates invitation:**
 ```bash
@@ -120,9 +51,25 @@ curl -X POST http://localhost:3001/api/v1/connections/invitations \
     "label": "Alice Agent",
     "goal": "Establish business connection"
   }'
+curl -X POST http://localhost:3001/api/v1/connections/invitations \
+  -H "Content-Type: application/json" \
+  -d '{
+    "myDid": "did:web:example.com:alice",
+    "label": "Alice Agent",
+    "targetDid": "did:web:example.com:bob",
+    "goal": "Private connection for Bob only"
+  }'
+```bash
+curl -X POST http://localhost:3001/api/v1/connections/accept-invitation \
+  -H "Content-Type: application/json" \
+  -d '{
+    "invitation": "<invitation-url>",
+    "myDid": "did:web:example.com:bob",
+    "label": "Bob Agent"
+  }'
 ```
 
-**Bob accepts invitation:**
+Accept targeted invitation (if you created one above):
 ```bash
 curl -X POST http://localhost:3001/api/v1/connections/accept-invitation \
   -H "Content-Type: application/json" \
@@ -135,7 +82,36 @@ curl -X POST http://localhost:3001/api/v1/connections/accept-invitation \
 
 ### 2. Activate Connection (Dev Helper)
 ```bash
- 
+curl -X POST http://localhost:3001/api/v1/connections/{connection-id}/activate
+```
+
+## Project Structure
+```
+dbn-trust-relationship-management/
+├── src/
+│   ├── api/
+│   │   ├── middleware/        # Express middleware
+│   │   ├── routes/           # API routes
+│   │   └── schemas/          # Zod validation schemas
+│   ├── core/
+│   │   ├── connections/      # Connection management
+│   │   ├── messages/         # Message handling
+│   │   ├── protocols/        # Protocol handlers
+│   │   └── discovery/        # Capability discovery
+│   ├── infrastructure/
+│   │   ├── clients/          # Phase 4 API client
+│   │   ├── database/         # Database migrations & pool
+│   │   └── transport/        # HTTP transport
+│   ├── types/               # TypeScript types
+│   ├── utils/               # Utilities (logger, errors)
+│   ├── config/              # Configuration
+│   └── server.ts            # Express server
+├── tests/
+│   ├── unit/               # Unit tests
+│   ├── helpers/            # Test helpers
+│   └── setup.ts            # Jest setup
+├── docs/
+│   ├── architecture.md     # Architecture documentation
 │   └── protocols.md        # Protocol specifications
 └── package.json
 ```
@@ -202,6 +178,28 @@ If you see ECONNREFUSED during `npm run migrate`:
 - Confirm firewall or socket restrictions aren’t blocking TCP on 5432.
 - Ensure the database `DB_NAME` exists; create with `createdb` above.
 - Align credentials: either create the `postgres` role with a password, or set `DB_USER`/`DB_PASSWORD` to your local role.
+
+-- Check invitation metadata
+SELECT 
+  id,
+  my_did,
+  their_did,
+  state,
+  metadata->>'invitationType' as invitation_type,
+  metadata->>'targetDid' as target_did
+FROM connections
+WHERE state = 'invited';
+
+-- Check accepted connections
+SELECT 
+  id,
+  my_did,
+  their_did,
+  state,
+  metadata->>'wasTargeted' as was_targeted
+FROM connections
+WHERE state = 'requested';
+
 
 ### Phase 4 API Connection Issues
 ```bash
