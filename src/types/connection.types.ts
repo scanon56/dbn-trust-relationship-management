@@ -44,6 +44,9 @@ export interface OutOfBandInvitation {
   goal?: string;
   accept?: string[];
   services: Array<string | ServiceEndpoint>;
+  'dbn:target'?: string;
+  // Correlation identifier used to tie logs across invitation lifecycle
+  'dbn:cid'?: string;
 }
 
 export interface CreateInvitationParams {
@@ -51,6 +54,7 @@ export interface CreateInvitationParams {
   label?: string;
   goalCode?: string;
   goal?: string;
+  targetDid?: string;
 }
 
 export interface AcceptInvitationParams {

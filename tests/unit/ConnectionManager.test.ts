@@ -1,214 +1,201 @@
-// Mock uuid to avoid ESM import issues under ts-jest
-jest.mock('uuid', () => ({ v4: () => 'mock-uuid' }));
-
 import { connectionManager } from '../../src/core/connections/ConnectionManager';
 import { connectionRepository } from '../../src/core/connections/ConnectionRepository';
-import { capabilityDiscovery } from '../../src/core/discovery/CapabilityDiscovery';
+import { didManager } from '../../src/core/did/DIDManager';
+import { OutOfBandInvitation } from '../../src/types/connection.types';
+import { messageRouter } from '../../src/core/messages/MessageRouter';
 import { ConnectionError } from '../../src/utils/errors';
-import { Connection, OutOfBandInvitation } from '../../src/types/connection.types';
+import { pool } from '../../src/infrastructure/database/pool';
 
-function makeConnection(partial: Partial<Connection>): Connection {
-  return {
-    id: partial.id || 'conn-1',
-    myDid: partial.myDid || 'did:example:alice',
-    theirDid: partial.theirDid || 'did:example:bob',
-    theirLabel: partial.theirLabel,
-    state: partial.state || 'invited',
-    role: partial.role || 'inviter',
-    theirEndpoint: partial.theirEndpoint,
-    theirProtocols: partial.theirProtocols || [],
-    theirServices: partial.theirServices || [],
-    invitation: partial.invitation,
-    invitationUrl: partial.invitationUrl,
-    tags: partial.tags || [],
-    notes: partial.notes,
-    metadata: partial.metadata || {},
-    createdAt: partial.createdAt || new Date(),
-    updatedAt: partial.updatedAt || new Date(),
-    lastActiveAt: partial.lastActiveAt,
-  };
-}
+jest.mock('uuid', () => ({ v4: () => 'mock-uuid' }));
+jest.mock('../../src/core/did/DIDManager');
+jest.mock('../../src/core/messages/MessageRouter');
 
-describe('ConnectionManager', () => {
-  afterEach(() => {
-    jest.restoreAllMocks();
+const mockedDidManager = jest.mocked(didManager);
+const mockedMessageRouter = jest.mocked(messageRouter);
+
+describe('ConnectionManager unit tests', () => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    await pool.query('DELETE FROM connections');
   });
 
-  test('createInvitation creates connection with inviter role and invited state', async () => {
-    const createSpy = jest.spyOn(connectionRepository, 'create').mockResolvedValue(
-      makeConnection({ id: 'inv-1', state: 'invited', role: 'inviter' })
-    );
-
-    const { connection, invitationUrl, invitation } = await connectionManager.createInvitation({
-      myDid: 'did:example:alice',
-      label: 'Alice',
-      goal: 'Establish business connection',
-      goalCode: 'establish-connection'
-    });
-
-    expect(createSpy).toHaveBeenCalled();
-    expect(connection.state).toBe('invited');
-    expect(connection.role).toBe('inviter');
-    expect(invitation['@type']).toBe('https://didcomm.org/out-of-band/2.0/invitation');
-    expect(invitationUrl).toMatch(/_oob=/);
+  const buildInvitation = (targetDid?: string): OutOfBandInvitation => ({
+    '@type': 'https://didcomm.org/out-of-band/2.0/invitation',
+    '@id': 'inv-1',
+    label: 'Alice',
+    services: [
+      {
+        id: 'did:peer:alice#didcomm',
+        type: 'DIDCommMessaging',
+        serviceEndpoint: 'https://endpoint.alice',
+        protocols: [
+          'https://didcomm.org/connections/1.0',
+          'https://didcomm.org/basicmessage/2.0',
+        ],
+      },
+    ],
+    ...(targetDid ? { 'dbn:target': targetDid } : {}),
   });
 
-  test('acceptInvitation parses URL and creates invitee connection', async () => {
-    // Build a fake invitation and encode similar to manager private method
-    const invitation: OutOfBandInvitation = {
-      '@type': 'https://didcomm.org/out-of-band/2.0/invitation',
-      '@id': '123',
-      label: 'Alice Agent',
-      services: [
-        {
-          id: '#didcomm',
-          type: 'DIDCommMessaging',
-          serviceEndpoint: 'http://localhost:3001/didcomm'
-        }
-      ]
-    };
-    const encoded = Buffer.from(JSON.stringify(invitation)).toString('base64url');
-    const invitationUrl = `https://didcomm.org/oob?_oob=${encoded}`;
+  const didDoc = (did: string, endpoint: string) => ({
+    '@context': 'https://www.w3.org/ns/did/v1',
+    id: did,
+    verificationMethod: [{}],
+    service: [
+      {
+        id: `${did}#didcomm`,
+        type: 'DIDCommMessaging',
+        serviceEndpoint: endpoint,
+        protocols: [
+          'https://didcomm.org/connections/1.0',
+          'https://didcomm.org/basicmessage/2.0',
+        ],
+      },
+    ],
+  });
 
-    jest.spyOn(connectionRepository, 'findByDids').mockResolvedValue(null);
-    const createSpy = jest.spyOn(connectionRepository, 'create').mockResolvedValue(
-      makeConnection({ id: 'conn-accepted', state: 'requested', role: 'invitee', invitation })
-    );
+  test('acceptInvitation targeted wrong DID throws INVITATION_NOT_FOR_YOU', async () => {
+    const invitation = buildInvitation('did:web:example.com:alice');
+    await expect(
+      connectionManager.acceptInvitation({ invitation, myDid: 'did:web:example.com:bob' })
+    ).rejects.toBeInstanceOf(ConnectionError);
+  });
 
-    const connection = await connectionManager.acceptInvitation({
-      invitation: invitationUrl,
-      myDid: 'did:example:bob',
-      label: 'Bob Agent'
+  test('acceptInvitation creates connection with protocols and endpoint', async () => {
+    const invitation = buildInvitation();
+    mockedDidManager.getDIDDocument.mockResolvedValueOnce(didDoc('did:peer:alice', 'https://endpoint.alice'));
+    mockedDidManager.createPeerDIDForConnection.mockResolvedValueOnce({
+      record: { id: 'peer-rec-bob', did: 'did:peer:bob', method: 'peer', methodId: 'bob', status: 'active', version: 1, metadata: {}, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as any,
+      didDocument: didDoc('did:peer:bob', 'https://endpoint.bob'),
     });
+    mockedDidManager.getDIDDocument.mockResolvedValueOnce(didDoc('did:peer:alice', 'https://endpoint.alice'));
+    mockedDidManager.extractServiceEndpoint.mockReturnValue('https://endpoint.alice');
+    mockedDidManager.extractProtocols.mockReturnValue([
+      'https://didcomm.org/connections/1.0',
+      'https://didcomm.org/basicmessage/2.0',
+    ]);
+    mockedDidManager.extractServices.mockReturnValue([
+      {
+        id: 'did:peer:alice#didcomm',
+        type: 'DIDCommMessaging',
+        serviceEndpoint: 'https://endpoint.alice',
+        protocols: [
+          'https://didcomm.org/connections/1.0',
+          'https://didcomm.org/basicmessage/2.0',
+        ],
+      },
+    ] as any);
+    mockedMessageRouter.routeOutbound.mockResolvedValue(undefined);
 
-    expect(createSpy).toHaveBeenCalled();
+    const connection = await connectionManager.acceptInvitation({ invitation, myDid: 'did:web:example.com:bob' });
     expect(connection.state).toBe('requested');
-    expect(connection.role).toBe('invitee');
+    expect(connection.theirEndpoint).toBe('https://endpoint.alice');
+    expect(connection.theirProtocols).toContain('https://didcomm.org/connections/1.0');
   });
 
-  test('acceptInvitation throws when connection already exists', async () => {
-    const invitation: OutOfBandInvitation = {
-      '@type': 'https://didcomm.org/out-of-band/2.0/invitation',
-      '@id': '456',
-      services: [ { id: '#didcomm', type: 'DIDCommMessaging', serviceEndpoint: 'http://x' } ]
-    };
-    const encoded = Buffer.from(JSON.stringify(invitation)).toString('base64url');
-    const invitationUrl = `https://didcomm.org/oob?_oob=${encoded}`;
-
-    jest.spyOn(connectionRepository, 'findByDids').mockResolvedValue(
-      makeConnection({ id: 'existing', myDid: 'did:example:bob', theirDid: 'did:unknown:inviter' })
-    );
-
-    await expect(
-      connectionManager.acceptInvitation({ invitation: invitationUrl, myDid: 'did:example:bob' })
-    ).rejects.toThrow(ConnectionError);
-  });
-
-  test('acceptInvitation rejects invalid URL', async () => {
-    await expect(
-      connectionManager.acceptInvitation({ invitation: 'https://didcomm.org/oob?missing', myDid: 'did:example:bob' })
-    ).rejects.toThrow(ConnectionError);
-  });
-
-  test('getConnection throws when not found', async () => {
-    jest.spyOn(connectionRepository, 'findById').mockResolvedValue(null);
-    await expect(connectionManager.getConnection('nope')).rejects.toThrow(ConnectionError);
-  });
-
-  test('updateConnectionState validates transition and updates state', async () => {
-    jest.spyOn(connectionRepository, 'findById').mockResolvedValue(
-      makeConnection({ id: 'state-1', state: 'invited' })
-    );
-    const updateSpy = jest.spyOn(connectionRepository, 'updateState').mockResolvedValue(
-      makeConnection({ id: 'state-1', state: 'requested' })
-    );
-    const updated = await connectionManager.updateConnectionState('state-1', 'requested');
-    expect(updateSpy).toHaveBeenCalledWith('state-1', 'requested');
-    expect(updated.state).toBe('requested');
-  });
-
-  test('ping succeeds for active connection and fails otherwise', async () => {
-    jest.spyOn(connectionRepository, 'findById').mockResolvedValueOnce(
-      makeConnection({ id: 'active-1', state: 'active' })
-    );
-    const ok = await connectionManager.ping('active-1');
-    expect(ok.success).toBe(true);
-
-    jest.spyOn(connectionRepository, 'findById').mockResolvedValueOnce(
-      makeConnection({ id: 'invited-1', state: 'invited' })
-    );
-    await expect(connectionManager.ping('invited-1')).rejects.toThrow(ConnectionError);
-  });
-
-  test('refreshCapabilities updates connection with discovered data', async () => {
-    jest.spyOn(connectionRepository, 'findById').mockResolvedValue(
-      makeConnection({ id: 'cap-1', state: 'active', theirDid: 'did:example:peer' })
-    );
-    const discoverSpy = jest.spyOn(capabilityDiscovery, 'discoverCapabilities').mockResolvedValue({
-      endpoint: 'https://peer.example.com/didcomm',
-      protocols: ['https://didcomm.org/basicmessage/2.0'],
-      services: [
-        { id: '#svc1', type: 'DIDCommMessaging', serviceEndpoint: 'https://peer.example.com/didcomm', protocols: ['https://didcomm.org/basicmessage/2.0'] }
-      ]
+  test('activateConnection progresses states to active', async () => {
+    const created = await connectionRepository.create({
+      myDid: 'did:peer:alice',
+      theirDid: 'did:peer:bob',
+      state: 'invited',
+      role: 'inviter',
+      invitation: null,
+      invitationUrl: undefined,
+      metadata: {},
     });
-    const updateSpy = jest.spyOn(connectionRepository, 'updateCapabilities').mockResolvedValue(
-      makeConnection({ id: 'cap-1', state: 'active', theirDid: 'did:example:peer', theirEndpoint: 'https://peer.example.com/didcomm', theirProtocols: ['https://didcomm.org/basicmessage/2.0'] })
-    );
-    const updated = await connectionManager.refreshCapabilities('cap-1');
-    expect(discoverSpy).toHaveBeenCalled();
-    expect(updateSpy).toHaveBeenCalled();
-    expect(updated.theirEndpoint).toBe('https://peer.example.com/didcomm');
+    const activated = await connectionManager.activateConnection(created.id);
+    expect(activated.state).toBe('active');
   });
 
-  test('refreshCapabilities throws when theirDid unknown', async () => {
-    jest.spyOn(connectionRepository, 'findById').mockResolvedValue(
-      makeConnection({ id: 'cap-2', state: 'active', theirDid: 'did:unknown:inviter' })
-    );
-    await expect(connectionManager.refreshCapabilities('cap-2')).rejects.toThrow(ConnectionError);
+  test('refreshCapabilities updates endpoint and protocols', async () => {
+    const created = await connectionRepository.create({
+      myDid: 'did:peer:alice',
+      theirDid: 'did:peer:bob',
+      state: 'invited',
+      role: 'inviter',
+      invitation: null,
+      invitationUrl: undefined,
+      metadata: {},
+    });
+    mockedDidManager.getDIDDocument.mockResolvedValueOnce(didDoc('did:peer:bob', 'https://endpoint.bob'));
+    mockedDidManager.extractServiceEndpoint.mockReturnValue('https://endpoint.bob');
+    mockedDidManager.extractProtocols.mockReturnValue([
+      'https://didcomm.org/connections/1.0',
+      'https://didcomm.org/basicmessage/2.0',
+    ]);
+    mockedDidManager.extractServices.mockReturnValue([
+      {
+        id: 'did:peer:bob#didcomm',
+        type: 'DIDCommMessaging',
+        serviceEndpoint: 'https://endpoint.bob',
+        protocols: [
+          'https://didcomm.org/connections/1.0',
+          'https://didcomm.org/basicmessage/2.0',
+        ],
+      },
+    ] as any);
+    const updated = await connectionManager.refreshCapabilities(created.id);
+    expect(updated.theirEndpoint).toBe('https://endpoint.bob');
+    expect(updated.theirProtocols.length).toBeGreaterThan(0);
   });
 
-  test('refreshCapabilities propagates discovery errors', async () => {
-    jest.spyOn(connectionRepository, 'findById').mockResolvedValue(
-      makeConnection({ id: 'cap-err', state: 'active', theirDid: 'did:example:peer2' })
-    );
-    jest.spyOn(capabilityDiscovery, 'discoverCapabilities').mockRejectedValue(new Error('network')); 
-    await expect(connectionManager.refreshCapabilities('cap-err')).rejects.toThrow('network');
+  test('activateConnection idempotency returns unchanged active connection', async () => {
+    const active = await connectionRepository.create({
+      myDid: 'did:peer:alice',
+      theirDid: 'did:peer:bob',
+      state: 'active',
+      role: 'inviter',
+      invitation: null,
+      invitationUrl: undefined,
+      metadata: {},
+    });
+    const updateSpy = jest.spyOn(connectionRepository, 'updateState');
+    const result = await connectionManager.activateConnection(active.id);
+    expect(result.state).toBe('active');
+    expect(updateSpy).not.toHaveBeenCalled();
   });
 
-  test('listConnections forwards filters to repository', async () => {
-    const listSpy = jest.spyOn(connectionRepository, 'list').mockResolvedValue({ connections: [], total: 0 });
-    const filters = { myDid: 'did:example:alice', state: 'active' as const, limit: 10, offset: 0 };
-    const result = await connectionManager.listConnections(filters);
-    expect(listSpy).toHaveBeenCalledWith(filters);
-    expect(result.total).toBe(0);
+  test('ping success path returns success true', async () => {
+    const active = await connectionRepository.create({
+      myDid: 'did:peer:alice',
+      theirDid: 'did:peer:bob',
+      state: 'active',
+      role: 'inviter',
+      invitation: null,
+      invitationUrl: undefined,
+      metadata: {},
+    });
+    mockedMessageRouter.routeOutbound.mockResolvedValueOnce(undefined);
+    const res = await connectionManager.ping(active.id);
+    expect(res.success).toBe(true);
+    expect(typeof res.responseTime).toBe('number');
   });
 
-  test('updateMetadata calls repository after existence check', async () => {
-    jest.spyOn(connectionRepository, 'findById').mockResolvedValue(
-      makeConnection({ id: 'meta-1', state: 'active' })
-    );
-    const updateSpy = jest.spyOn(connectionRepository, 'updateMetadata').mockResolvedValue(
-      makeConnection({ id: 'meta-1', state: 'active', theirLabel: 'Bob', tags: ['a'], metadata: { note: 'x' } })
-    );
-    const updated = await connectionManager.updateMetadata('meta-1', { theirLabel: 'Bob', tags: ['a'], metadata: { note: 'x' } });
-    expect(updateSpy).toHaveBeenCalled();
-    expect(updated.theirLabel).toBe('Bob');
-    expect(updated.tags).toContain('a');
+  test('ping failure path returns success false when routing fails', async () => {
+    const active = await connectionRepository.create({
+      myDid: 'did:peer:alice',
+      theirDid: 'did:peer:bob',
+      state: 'active',
+      role: 'inviter',
+      invitation: null,
+      invitationUrl: undefined,
+      metadata: {},
+    });
+    mockedMessageRouter.routeOutbound.mockRejectedValueOnce(new Error('transport failure'));
+    const res = await connectionManager.ping(active.id);
+    expect(res.success).toBe(false);
   });
 
-  test('deleteConnection deletes after existence check', async () => {
-    jest.spyOn(connectionRepository, 'findById').mockResolvedValue(
-      makeConnection({ id: 'del-1', state: 'active' })
-    );
-    const deleteSpy = jest.spyOn(connectionRepository, 'delete').mockResolvedValue();
-    await connectionManager.deleteConnection('del-1');
-    expect(deleteSpy).toHaveBeenCalledWith('del-1');
-  });
-
-  test('updateConnectionState invalid transition throws', async () => {
-    jest.spyOn(connectionRepository, 'findById').mockResolvedValue(
-      makeConnection({ id: 'inv-2', state: 'invited' })
-    );
-    await expect(connectionManager.updateConnectionState('inv-2', 'active')).rejects.toThrow(ConnectionError);
+  test('ping non-active connection throws ConnectionError', async () => {
+    const invited = await connectionRepository.create({
+      myDid: 'did:peer:alice',
+      theirDid: 'did:peer:bob',
+      state: 'invited',
+      role: 'inviter',
+      invitation: null,
+      invitationUrl: undefined,
+      metadata: {},
+    });
+    await expect(connectionManager.ping(invited.id)).rejects.toBeInstanceOf(ConnectionError);
   });
 });

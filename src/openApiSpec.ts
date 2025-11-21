@@ -25,7 +25,7 @@ export const openapiSpec = {
     {
       name: 'Connections',
       description:
-        'Manage DIDComm connections. Typical flow: 1) Create invitation, 2) Share the invitation URL, 3) Accept the invitation from the other agent, 4) Connection moves to active state.',
+        'Manage DIDComm connections. Typical flow: 1) Create invitation, 2) Share the invitation URL, 3) Accept the invitation from the other agent, 4) Connection moves to active state. In dual-instance local testing each agent may use a separate database (dbn_trust_management_a / dbn_trust_management_b) and sees only its own side of the handshake; use the correlationId (dbn:cid) to trace across both.',
     },
     {
       name: 'Messages',
@@ -70,6 +70,9 @@ export const openapiSpec = {
           createdAt: { type: 'string', format: 'date-time', description: 'Creation timestamp.' },
           updatedAt: { type: 'string', format: 'date-time', description: 'Last update timestamp.' },
           lastActiveAt: { type: 'string', format: 'date-time', description: 'Last time a message was exchanged.' },
+          correlationId: { type: 'string', description: 'Tracing correlation ID (also present in metadata.correlationId).', example: 'c6f9d1a2-3c0f-4d7e-9b29-0d9c4f52b1e2' },
+        },
+        description: 'Represents one side of a DIDComm connection. In a dual-database setup (e.g., Agent A vs Agent B) each agent maintains its own record with local role perspective; states advance independently (inviter: invited→requested→active, invitee: requested→responded→active).',
         },
       },
       Message: {
@@ -104,6 +107,8 @@ export const openapiSpec = {
           goal: { type: 'string', description: 'Optional description of the purpose of the invitation.' },
           accept: { type: 'array', items: { type: 'string' }, description: 'Accepted media types.' },
           services: { type: 'array', items: { type: 'object' }, description: 'Service entries (DID or inline service blocks).' },
+          'dbn:target': { type: 'string', description: 'Target DID for targeted invitations' },
+          'dbn:cid': { type: 'string', description: 'Correlation ID for tracing invitation lifecycle.' },
         },
       },
       ErrorResponse: {
@@ -233,6 +238,11 @@ export const openapiSpec = {
                   label: { type: 'string', example: 'Alice Agent' },
                   goalCode: { type: 'string', example: 'establish-connection' },
                   goal: { type: 'string', example: 'To establish a secure connection' },
+                  targetDid: { 
+                    type: 'string', 
+                    example: 'did:web:example.com:bob',
+                    description: 'Optional: Restrict invitation to specific DID' 
+                },
                 },
               },
               examples: {
@@ -249,6 +259,15 @@ export const openapiSpec = {
                     goal: 'Establish business connection',
                   },
                 },
+                targetedInvitation: {
+                  summary: 'Targeted invitation (only Bob can accept)',
+                  value: {
+                    myDid: 'did:web:example.com:alice',
+                    label: 'Alice Agent',
+                    targetDid: 'did:web:example.com:bob',
+                    goal: 'Private connection for Bob'
+                  }
+            }
               },
             },
           },
@@ -268,6 +287,7 @@ export const openapiSpec = {
                         connection: { $ref: '#/components/schemas/Connection' },
                         invitationUrl: { type: 'string' },
                         invitation: { $ref: '#/components/schemas/OutOfBandInvitation' },
+                        correlationId: { type: 'string', description: 'Tracing correlation ID for this invitation.' },
                       },
                     },
                   },
@@ -349,6 +369,7 @@ export const openapiSpec = {
                       type: 'object',
                       properties: {
                         connection: { $ref: '#/components/schemas/Connection' },
+                        correlationId: { type: 'string', description: 'Tracing correlation ID propagated from invitation.' },
                       },
                     },
                   },
@@ -440,6 +461,7 @@ export const openapiSpec = {
                       type: 'object',
                       properties: {
                         connection: { $ref: '#/components/schemas/Connection' },
+                        correlationId: { type: 'string', description: 'Tracing correlation ID for this connection.' },
                       },
                     },
                   },
@@ -494,6 +516,7 @@ export const openapiSpec = {
                       type: 'object',
                       properties: {
                         connection: { $ref: '#/components/schemas/Connection' },
+                        correlationId: { type: 'string', description: 'Tracing correlation ID for this connection.' },
                       },
                     },
                   },
@@ -569,6 +592,7 @@ export const openapiSpec = {
                         protocols: { type: 'array', items: { type: 'string' } },
                         services: { type: 'array', items: { type: 'object' } },
                         endpoint: { type: 'string' },
+                        correlationId: { type: 'string', description: 'Tracing correlation ID for this connection.' },
                       },
                     },
                   },
@@ -601,6 +625,7 @@ export const openapiSpec = {
                       type: 'object',
                       properties: {
                         connection: { $ref: '#/components/schemas/Connection' },
+                        correlationId: { type: 'string', description: 'Tracing correlation ID for this connection.' },
                       },
                     },
                   },
@@ -634,6 +659,7 @@ export const openapiSpec = {
                       properties: {
                         success: { type: 'boolean' },
                         responseTime: { type: 'number' },
+                        correlationId: { type: 'string', description: 'Tracing correlation ID for the pinged connection.' },
                       },
                     },
                   },
@@ -666,6 +692,7 @@ export const openapiSpec = {
                       type: 'object',
                       properties: {
                         connection: { $ref: '#/components/schemas/Connection' },
+                        correlationId: { type: 'string', description: 'Tracing correlation ID for this connection.' },
                       },
                     },
                   },

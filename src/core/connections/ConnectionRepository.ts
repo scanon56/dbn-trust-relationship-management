@@ -16,6 +16,8 @@ export class ConnectionRepository {
     state: ConnectionState;
     role: 'inviter' | 'invitee';
     theirEndpoint?: string;
+    theirProtocols?: string[];
+    theirServices?: ServiceEndpoint[];
     invitation?: string | OutOfBandInvitation | null;
     invitationUrl?: string;
     metadata?: Record<string, unknown>;
@@ -23,9 +25,10 @@ export class ConnectionRepository {
     const query = `
       INSERT INTO connections (
         my_did, their_did, their_label, state, role,
-        their_endpoint, invitation, invitation_url, metadata
+        their_endpoint, their_protocols, their_services,
+        invitation, invitation_url, metadata
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
     `;
     
@@ -36,6 +39,8 @@ export class ConnectionRepository {
       data.state,
       data.role,
       data.theirEndpoint || null,
+      JSON.stringify(data.theirProtocols || []),
+      JSON.stringify(data.theirServices || []),
       data.invitation ? JSON.stringify(data.invitation) : null,
       data.invitationUrl || null,
       JSON.stringify(data.metadata || {}),

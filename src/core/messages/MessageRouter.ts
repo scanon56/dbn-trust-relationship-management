@@ -93,7 +93,36 @@ export class MessageRouter {
         });
       }
 
-      if (connection.state !== 'active') {
+      // Allow a connection request message during handshake 'requested' state.
+      const isConnectionRequest = message.type === 'https://didcomm.org/connections/1.0/request';
+      const isConnectionResponse = message.type === 'https://didcomm.org/connections/1.0/response';
+      const isConnectionAck = message.type === 'https://didcomm.org/connections/1.0/ack';
+
+      if (isConnectionRequest) {
+        if (connection.state !== 'requested') {
+          throw new MessageError(
+            'Connection request can only be sent in requested state',
+            'CONNECTION_REQUEST_INVALID_STATE',
+            { connectionId, state: connection.state }
+          );
+        }
+      } else if (isConnectionResponse) {
+        if (connection.state !== 'requested') {
+          throw new MessageError(
+            'Connection response can only be sent while requested',
+            'CONNECTION_RESPONSE_INVALID_STATE',
+            { connectionId, state: connection.state }
+          );
+        }
+      } else if (isConnectionAck) {
+        if (connection.state !== 'responded') {
+          throw new MessageError(
+            'Connection ack requires responded state',
+            'CONNECTION_ACK_INVALID_STATE',
+            { connectionId, state: connection.state }
+          );
+        }
+      } else if (connection.state !== 'active') {
         throw new MessageError(
           'Connection is not active',
           'CONNECTION_NOT_ACTIVE',
@@ -133,8 +162,8 @@ export class MessageRouter {
         from: connection.myDid,
       });
 
-      // Send to peer endpoint
-      await this.sendToEndpoint(connection.theirEndpoint, encrypted.jwe);
+      // Send to peer endpoint, include recipient DID so transport can decrypt
+      await this.sendToEndpoint(connection.theirEndpoint, encrypted.jwe, connection.theirDid);
 
       // Update message state
       await messageRepository.updateState(storedMessage.id, 'sent');
@@ -171,17 +200,20 @@ export class MessageRouter {
   /**
    * Send encrypted message to peer endpoint
    */
-  private async sendToEndpoint(endpoint: string, encryptedMessage: string): Promise<void> {
+  private async sendToEndpoint(endpoint: string, encryptedMessage: string, recipientDid: string): Promise<void> {
     logger.debug('Sending to endpoint', { endpoint });
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
     try {
-      const response = await fetch(endpoint, {
+      // Append ?did= if not already supplied (transport allows query or header)
+      const url = endpoint.includes('?') ? `${endpoint}&did=${encodeURIComponent(recipientDid)}` : `${endpoint}?did=${encodeURIComponent(recipientDid)}`;
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/didcomm-encrypted+json',
+          'X-Recipient-DID': recipientDid,
         },
         body: encryptedMessage,
         signal: controller.signal,
@@ -197,7 +229,7 @@ export class MessageRouter {
       }
 
       logger.debug('Message delivered to endpoint', {
-        endpoint,
+        endpoint: url,
         status: response.status,
       });
     } catch (error) {

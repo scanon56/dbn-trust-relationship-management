@@ -20,3 +20,14 @@ export const logger = winston.createLogger({
     new winston.transports.Console(),
   ],
 });
+
+// Create a child logger that embeds a correlationId for tracing flows
+export function withCorrelation(correlationId: string) {
+  try {
+    // winston >=3 supports child
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return (logger as any).child ? (logger as any).child({ correlationId }) : logger;
+  } catch {
+    return logger;
+  }
+}

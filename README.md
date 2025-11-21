@@ -31,6 +31,7 @@ Requires `psql` in PATH and `.env` at the project root. See `scripts/README.md` 
 - ✅ Message threading and search
 - ✅ Connection metadata and tagging
 - ✅ Failed message retry
+- ✅ Correlation IDs for invitation & handshake tracing (`dbn:cid`)
 
 ## Architecture
 ```
@@ -78,6 +79,28 @@ curl -X POST http://localhost:3001/api/v1/connections/accept-invitation \
     "myDid": "did:web:example.com:bob",
     "label": "Bob Agent"
   }'
+
+### Correlation IDs (Tracing)
+Each invitation embeds a correlation ID (`dbn:cid`) used to link logs across creation, acceptance, and connection request dispatch.
+Query locally:
+```sql
+SELECT id, state, metadata->>'correlationId' AS correlation_id
+FROM connections
+WHERE state IN ('invited','requested','responded','active');
+```
+Filter structured logs (example):
+```bash
+grep 'correlationId' server.log | grep '<your-correlation-id>'
+```
+If an incoming invitation lacks `dbn:cid`, one is generated at acceptance.
+
+Decode an invitation URL or raw `_oob` value:
+```bash
+node scripts/decode-oob.js 'https://didcomm.org/oob?_oob=eyJAdHlwZSI6ICJodHRwczovL2RpZGNvbW0ub3JnL291dC1vZi1iYW5kLzIuMC9pbnZpdGF0aW9uIiwgImRibiJ...' 
+# or
+node scripts/decode-oob.js eyJAdHlwZSI6Imh0dHBzOi8vZGlkY29tbS5vcmcvb3V0LW9mLWJhbmQvMi4wL2ludml0YXRpb24iLCJAYWlkIjoiLi4uIn0
+```
+Outputs full invitation JSON plus correlation ID summary.
 ```
 
 ### 2. Activate Connection (Dev Helper)
@@ -117,6 +140,42 @@ dbn-trust-relationship-management/
 ```
 
 ## Development
+
+### Dual-Instance (Separate Databases)
+For realistic two-agent testing run each server against its own database (same Postgres cluster, different DB names):
+
+```bash
+# 1. Create & migrate both databases
+./scripts/db-init-dual.sh  # creates dbn_trust_management_a / dbn_trust_management_b and runs migrations
+
+# 2. Start Agent A (port 3001)
+PORT=3001 DB_NAME=dbn_trust_management_a DIDCOMM_ENDPOINT=http://localhost:3001/didcomm npm run dev
+
+# 3. Start Agent B (port 3002)
+PORT=3002 DB_NAME=dbn_trust_management_b DIDCOMM_ENDPOINT=http://localhost:3002/didcomm npm run dev
+
+# 4. (Optional) Playground
+npm run playground:dev
+```
+
+Shortcut (all three concurrently):
+```bash
+npm run demo:dual:db
+```
+
+Migrate individually:
+```bash
+npm run migrate:agentA
+npm run migrate:agentB
+```
+
+Inspect each database:
+```bash
+DB_NAME=dbn_trust_management_a ./scripts/db-helper.sh connections
+DB_NAME=dbn_trust_management_b ./scripts/db-helper.sh connections
+```
+
+Connection rows are now isolated per agent: the inviter advances its single record through states without clashing with the invitee’s independent record.
 
 ### Adding a New Protocol Handler
 
@@ -267,6 +326,7 @@ Reliability measures: sequential Jest (`--runInBand`), deterministic UUID mocks,
 
 ## Developer Notes
 - Enable test debug logs: `DEBUG_LOGS=1 npm test`.
+- Multi-DB Runs: Use `DB_NAME=...` prefixes or new dual-demo scripts. Avoid sharing one DB if you need realistic cross-agent handshake progression.
 - Add protocol: implement `supports()` + `handle()` then register in `initializeProtocols()`.
 - Consider WebSocket / queue transport abstraction around `sendToEndpoint`.
 - Potential next badge: generate coverage shield via CI using `lcov.info`.
