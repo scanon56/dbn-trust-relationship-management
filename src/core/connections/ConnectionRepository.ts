@@ -16,6 +16,8 @@ export class ConnectionRepository {
     state: ConnectionState;
     role: 'inviter' | 'invitee';
     theirEndpoint?: string;
+    theirProtocols?: string[];
+    theirServices?: ServiceEndpoint[];
     invitation?: string | OutOfBandInvitation | null;
     invitationUrl?: string;
     metadata?: Record<string, unknown>;
@@ -23,9 +25,10 @@ export class ConnectionRepository {
     const query = `
       INSERT INTO connections (
         my_did, their_did, their_label, state, role,
-        their_endpoint, invitation, invitation_url, metadata
+        their_endpoint, their_protocols, their_services,
+        invitation, invitation_url, metadata
       )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
       RETURNING *
     `;
     
@@ -36,6 +39,8 @@ export class ConnectionRepository {
       data.state,
       data.role,
       data.theirEndpoint || null,
+      JSON.stringify(data.theirProtocols || []),
+      JSON.stringify(data.theirServices || []),
       data.invitation ? JSON.stringify(data.invitation) : null,
       data.invitationUrl || null,
       JSON.stringify(data.metadata || {}),
@@ -345,20 +350,20 @@ export class ConnectionRepository {
       id: row.id,
       myDid: row.my_did,
       theirDid: row.their_did,
-      theirLabel: row.their_label,
+      theirLabel: row.their_label ?? undefined,
       state: row.state,
       role: row.role,
-      theirEndpoint: row.their_endpoint,
+      theirEndpoint: row.their_endpoint ?? undefined,
       theirProtocols: row.their_protocols || [],
       theirServices: row.their_services || [],
-      invitation: row.invitation,
-      invitationUrl: row.invitation_url,
+      invitation: (row.invitation ?? undefined) as OutOfBandInvitation | undefined,
+      invitationUrl: row.invitation_url ?? undefined,
       tags: row.tags || [],
-      notes: row.notes,
+      notes: row.notes ?? undefined,
       metadata: row.metadata || {},
       createdAt: row.created_at,
       updatedAt: row.updated_at,
-      lastActiveAt: row.last_active_at,
+      lastActiveAt: row.last_active_at ?? undefined,
     };
   }
 }

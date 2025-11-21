@@ -1,0 +1,103 @@
+# Dual Agent DIDComm Playground
+
+This simple static UI lets you exercise the connection + messaging flow between two simulated agents (A & B) using the local Trust Relationship Management API.
+
+## Prerequisites
+- Server running locally on `http://localhost:3001` (start with `npm run dev` or your usual command)
+- Database migrated & reachable (use `./scripts/db-helper.sh status` if needed)
+- Node.js 20+
+
+## Quick Start
+Run the playground with Vite (local dev server):
+
+```sh
+npm install
+npm run playground:dev
+```
+
+Open the printed URL (typically `http://localhost:5173`).
+
+Or start both API and the playground together from the repo root:
+
+```sh
+npm run demo
+```
+
+Build static assets and preview the production build:
+
+```sh
+npm run playground:build
+npm run playground:preview
+```
+
+## Usage Flow (Multi-Instance)
+You should run TWO API server instances for a real handshake:
+
+```sh
+# Terminal 1 (Agent A backend)
+PORT=3001 DIDCOMM_ENDPOINT=http://localhost:3001/didcomm npm run dev
+
+# Terminal 2 (Agent B backend)
+PORT=3002 DIDCOMM_ENDPOINT=http://localhost:3002/didcomm npm run dev
+```
+
+Then start the playground (can be a third terminal):
+
+```sh
+npm run playground:dev
+```
+
+Flow:
+1. In Agent A panel set API Base `http://localhost:3001`, fill DID, click **Create Invitation**.
+2. Invitation URL appears and is copied to Agent B panel.
+3. In Agent B panel set API Base `http://localhost:3002`, fill DID, click **Accept Invitation**.
+4. Agent B sends a DIDComm connection request to Agent A's DIDComm endpoint; Agent A auto-sends a response; both sides transition to `active` automatically. Status text updates while polling.
+5. When status shows `active`, messaging buttons enable; exchange BasicMessage DIDComm messages.
+
+### Optional: Separate Databases for Realistic Isolation
+You can give each agent its own database so each side only sees its local connection row:
+
+```sh
+./scripts/db-init-dual.sh  # creates & migrates dbn_trust_management_a and _b
+
+PORT=3001 DB_NAME=dbn_trust_management_a DIDCOMM_ENDPOINT=http://localhost:3001/didcomm npm run dev
+PORT=3002 DB_NAME=dbn_trust_management_b DIDCOMM_ENDPOINT=http://localhost:3002/didcomm npm run dev
+```
+
+Or run all three (A, B, UI) concurrently:
+```sh
+npm run demo:dual:db
+```
+
+In dual-DB mode each agent’s connection record advances independently (inviter: invited→requested→active, invitee: requested→responded→active). Use the correlation ID (`dbn:cid`) to correlate handshake logs across both databases.
+
+Manual **Activate** buttons remain as fallback if one side cannot deliver DIDComm messages (e.g., only one server running). When both servers are up they are not needed.
+
+## Notes
+- Targeted invitation: Provide `Target DID` before creating invitation (optional). If present, only that DID should accept meaningfully.
+- Handshake states: `invited → requested → responded → active` occur automatically across the two backends.
+- Message type used: `https://didcomm.org/basicmessage/2.0/message` with a `body.content` string.
+- Refreshing messages queries `/api/v1/messages?connectionId=...`.
+- Correlation ID: Invitation URLs carry a `dbn:cid` inside the base64 `_oob` segment. Decode it to correlate Create → Accept → Request logs.
+- Polling: The UI polls connection state every 2s until `active` or timeout (~2 min).
+- Transport Health: Each panel shows DIDComm transport health (GET `/didcomm/health`). Values: `healthy`, `network`, `http <code>`, or `unknown`. A failing transport prevents handshake messages from arriving.
+
+## Extending
+- Add Trust Ping: POST a trust-ping DIDComm message with a different `type` value.
+- Persist UI state: Wrap local state in `localStorage` for reloading.
+- Bundle: Convert to a small Vite setup if you want hot reload and modular TS.
+
+## Troubleshooting
+| Issue | Resolution |
+|-------|------------|
+| Invitation accept fails | Ensure both API bases are correct (3001 / 3002) and servers running. |
+| Stuck in `invited` | Agent B server not running; request never delivered to A. |
+| Stuck in `requested` | Agent A server not running or auto-response failed; use manual Activate as fallback. |
+| Transport shows `network` | Server unreachable; verify port & process, firewall, or container mapping. |
+| Transport shows `http 415` | DIDComm content-type mismatch; backend must accept `application/didcomm-encrypted+json`. |
+| Cannot send message | Wait until status shows `active` or use Activate fallback. |
+| Empty message list | Use **Refresh Messages** after sending or acceptance. |
+| CORS errors | Confirm server middleware; adjust if cross-origin hosting playground. |
+
+## Cleanup
+This playground is self-contained static HTML/TS (built by Vite). Remove the directory if no longer needed: `rm -rf examples/dual-agent-playground`.

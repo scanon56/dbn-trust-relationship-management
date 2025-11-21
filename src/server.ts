@@ -62,31 +62,34 @@ app.use((req, res) => {
 // Error handling
 app.use(errorHandler);
 
-// Start server
-const server = app.listen(config.port, () => {
-  logger.info('Server started', {
-    port: config.port,
-    environment: config.nodeEnv,
-    didcommEndpoint: config.didcomm.endpoint,
-  });
-});
-
-// Graceful shutdown
-const shutdown = async () => {
-  logger.info('Shutdown signal received, closing server gracefully');
-
-  server.close(() => {
-    logger.info('HTTP server closed');
+// Start server (skip in tests to avoid open handle)
+let server: import('http').Server | undefined;
+if (config.nodeEnv !== 'test' && !process.env.JEST_WORKER_ID) {
+  server = app.listen(config.port, () => {
+    logger.info('Server started', {
+      port: config.port,
+      environment: config.nodeEnv,
+      didcommEndpoint: config.didcomm.endpoint,
+    });
   });
 
-  await closeDatabasePool();
-  logger.info('Database pool closed');
+  // Graceful shutdown
+  const shutdown = async () => {
+    logger.info('Shutdown signal received, closing server gracefully');
 
-  process.exit(0);
-};
+    server?.close(() => {
+      logger.info('HTTP server closed');
+    });
 
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+    await closeDatabasePool();
+    logger.info('Database pool closed');
+
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+}
 
 // Handle uncaught errors
 process.on('unhandledRejection', (reason, promise) => {

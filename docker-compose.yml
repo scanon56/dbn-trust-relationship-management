@@ -4,16 +4,16 @@ services:
     image: postgres:16
     container_name: dbn-postgres
     environment:
-      POSTGRES_USER: dbn_user
-      POSTGRES_PASSWORD: dbn_password
-      POSTGRES_DB: dbn_platform
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: dbn_trust_management
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "pg_isready", "-U", "dbn_user"]
+      test: ["CMD", "pg_isready", "-U", "postgres"]
       interval: 5s
       timeout: 3s
       retries: 10

@@ -331,9 +331,9 @@ export class MessageRepository {
     return {
       id: row.id,
       messageId: row.message_id,
-      threadId: row.thread_id,
-      parentId: row.parent_id,
-      connectionId: row.connection_id,
+      threadId: row.thread_id ?? undefined,
+      parentId: row.parent_id ?? undefined,
+      connectionId: row.connection_id ?? undefined,
       type: row.type,
       direction: row.direction,
       fromDid: row.from_did,
@@ -341,11 +341,11 @@ export class MessageRepository {
       body: row.body,
       attachments: row.attachments || [],
       state: row.state,
-      errorMessage: row.error_message,
-      retryCount: row.retry_count,
+      errorMessage: row.error_message ?? undefined,
+      retryCount: row.retry_count ?? 0,
       metadata: row.metadata || {},
       createdAt: row.created_at,
-      processedAt: row.processed_at,
+      processedAt: row.processed_at ?? undefined,
     };
   }
 }
