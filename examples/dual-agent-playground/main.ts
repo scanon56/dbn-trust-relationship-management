@@ -19,6 +19,7 @@ interface MessageRecord {
 // Track displayed messages to avoid duplicates when polling
 const displayedMessageIds: Record<'a' | 'b', Set<string>> = { a: new Set(), b: new Set() };
 let messagePollers: Record<'a'|'b', number | null> = { a: null, b: null };
+let sseSources: Record<'a'|'b', EventSource | null> = { a: null, b: null };
 
 function getApiBase(panel: 'a' | 'b'): string {
   const inputId = panel === 'a' ? 'aApiBase' : 'bApiBase';
@@ -80,6 +81,45 @@ function startMessagePolling(panel: 'a' | 'b', connectionId: string) {
   // Initial immediate fetch
   interval();
   messagePollers[panel] = window.setInterval(interval, 3000); // every 3s
+}
+
+function startLiveMessages(panel: 'a' | 'b') {
+  // Close existing source
+  if (sseSources[panel]) {
+    sseSources[panel]!.close();
+    sseSources[panel] = null;
+  }
+  const base = getApiBase(panel);
+  try {
+    const src = new EventSource(base + '/api/v1/events/basicmessages');
+    src.addEventListener('basicmessage', (evt: MessageEvent) => {
+      try {
+        const payload = JSON.parse(evt.data);
+        // If connectionId filtering is desired, ensure it matches current connection
+        const currentId = el(panel === 'a' ? 'aConnectionId' : 'bConnectionId').textContent?.trim();
+        if (currentId && currentId !== '(none)' && payload.connectionId && payload.connectionId !== currentId) {
+          return; // ignore messages from other connections
+        }
+        addMsg(panel, {
+          id: payload.messageId,
+          type: 'https://didcomm.org/basicmessage/2.0/message',
+          body: { content: payload.content },
+          direction: 'inbound'
+        });
+        log(panel, 'Live message received');
+      } catch (e: any) {
+        log(panel, 'Live message parse error: ' + e.message);
+      }
+    });
+    src.onerror = () => {
+      log(panel, 'SSE error; reconnecting...');
+      setTimeout(() => startLiveMessages(panel), 3000);
+    };
+    sseSources[panel] = src;
+    log(panel, 'Subscribed to live messages');
+  } catch (e: any) {
+    log(panel, 'Failed to start live messages: ' + e.message);
+  }
 }
 
 async function api<T>(panel: 'a' | 'b', path: string, opts: RequestInit = {}): Promise<T> {
@@ -213,6 +253,7 @@ el<HTMLButtonElement>('aCreateInvitationBtn').addEventListener('click', async ()
     log('a', 'Invitation created');
     updateStatus('a', connection.state || 'invited');
     pollConnection('a', connection.id);
+    startLiveMessages('a');
   } catch (e: any) {
     log('a', 'Error creating invitation: ' + e.message);
     checkTransport('a');
@@ -272,6 +313,7 @@ el<HTMLButtonElement>('bAcceptInvitationBtn').addEventListener('click', async ()
     log('b', 'Invitation accepted');
     updateStatus('b', data.connection.state || 'requested');
     pollConnection('b', data.connection.id);
+    startLiveMessages('b');
   } catch (e: any) {
     log('b', 'Accept failed: ' + e.message);
     checkTransport('b');

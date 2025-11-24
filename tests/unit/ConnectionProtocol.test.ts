@@ -50,7 +50,7 @@ describe('ConnectionProtocol', () => {
     expect(responseMsg.type).toBe('https://didcomm.org/connections/1.0/response');
   });
 
-  test('handle response progresses to responded', async () => {
+  test('handle response progresses to complete', async () => {
     // Create connection in requested state
     const connection = await connectionRepository.create({
       myDid: 'did:peer:invitee2',
@@ -74,7 +74,8 @@ describe('ConnectionProtocol', () => {
     });
 
     const updated = await connectionRepository.findById(connection.id);
-    expect(updated?.state).toBe('responded');
+    // Protocol auto-sends ack after response, completing connection
+    expect(updated?.state).toBe('complete');
   });
 
   test('handle ack completes responded connection', async () => {

@@ -105,7 +105,7 @@ DB_PASSWORD=postgres
 
 ### Example 3: Custom query
 ```bash
-./db-helper.sh query "SELECT * FROM connections WHERE state = 'active'"
+./db-helper.sh query "SELECT * FROM connections WHERE state = 'complete'"
 ```
 
 ### Example 4: Inspect table structure
@@ -269,7 +269,7 @@ Inside `./db-helper.sh console`:
 ### Create custom queries file
 ```bash
 cat > my-queries.sql << 'EOF'
-SELECT * FROM connections WHERE state = 'active';
+SELECT * FROM connections WHERE state = 'complete';
 SELECT COUNT(*) FROM messages;
 EOF
 

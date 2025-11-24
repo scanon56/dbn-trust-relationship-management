@@ -5,7 +5,7 @@ export const openapiSpec = {
     title: 'DBN Trust Relationship Management API',
     version: '1.0.0',
     description:
-      'DIDComm-based peer-to-peer connection and message management for the Decentralized Business Network Platform.\n\nUse the Connections endpoints to create and accept invitations, then send messages over active connections. For encrypted DIDComm traffic from remote agents, use the /didcomm transport endpoint with Content-Type application/didcomm-encrypted+json.',
+      'DIDComm-based peer-to-peer connection and message management for the Decentralized Business Network Platform.\n\nUse the Connections endpoints to create and accept invitations, then send messages over complete connections. For encrypted DIDComm traffic from remote agents, use the /didcomm transport endpoint with Content-Type application/didcomm-encrypted+json.',
     contact: {
       name: 'API Support',
       email: 'support@example.com',
@@ -42,6 +42,7 @@ export const openapiSpec = {
         'Transport endpoint for inbound encrypted DIDComm messages from peers. Clients must POST a JWE with Content-Type application/didcomm-encrypted+json and include the recipient DID as a query parameter.',
     },
     { name: 'Health', description: 'Service health and readiness probes.' },
+    { name: 'Events', description: 'Server-Sent Events (SSE) real-time streams.' },
   ],
   components: {
     schemas: {
@@ -81,12 +82,29 @@ export const openapiSpec = {
           direction: { type: 'string', enum: ['inbound', 'outbound'] },
           fromDid: { type: 'string' },
           toDids: { type: 'array', items: { type: 'string' } },
-          body: { type: 'object' },
+          body: { 
+            type: 'object',
+            description: 'Protocol-specific payload. For BasicMessage 2.0 only the content string is used.',
+            properties: {
+              content: { type: 'string', example: 'Hello there!' }
+            },
+            required: ['content']
+          },
           attachments: { type: 'array', items: { type: 'object' } },
           state: { type: 'string', enum: ['pending', 'sent', 'delivered', 'failed', 'processed'] },
           errorMessage: { type: 'string' },
           retryCount: { type: 'integer' },
-          metadata: { type: 'object' },
+          metadata: { 
+            type: 'object',
+            description: 'Transport and protocol metadata. Includes created_time (epoch seconds), lang (if supplied), encryption flag, etc.',
+            properties: {
+              transport: { type: 'string' },
+              encrypted: { type: 'boolean' },
+              lang: { type: 'string', description: 'Language code (e.g., en)' },
+              created_time: { type: 'integer', description: 'Epoch seconds when message was created (DIDComm header)' },
+              attachments_out_of_scope: { type: 'boolean', description: 'True if attachments present (non-standard for basicmessage)' }
+            }
+          },
           createdAt: { type: 'string', format: 'date-time' },
           processedAt: { type: 'string', format: 'date-time' },
         },
@@ -671,7 +689,7 @@ export const openapiSpec = {
         summary: 'Send message',
         tags: ['Messages'],
         description:
-          'Send a DIDComm message over an existing connection.\n\nTips: For a simple text message, use type https://didcomm.org/basicmessage/2.0/message and body { "content": "Hello" }. You may also supply threadId to continue a thread.',
+          'Send a DIDComm message over an existing connection.\n\nBasicMessage 2.0 requires a body with a single content string (body.content). Optionally set threadId to continue a thread. The system auto-populates created_time and lang metadata from headers.',
         operationId: 'sendMessage',
         requestBody: {
           required: true,
@@ -771,6 +789,62 @@ export const openapiSpec = {
           },
         },
       },
+    },
+    '/api/v1/basicmessages': {
+      post: {
+        summary: 'Send BasicMessage 2.0 (shortcut)',
+        tags: ['Messages'],
+        description: 'Convenience endpoint for BasicMessage: supply connectionId and content (optional lang, threadId). Server constructs DIDComm message with correct type and headers.',
+        operationId: 'sendBasicMessageShortcut',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['connectionId', 'content'],
+                properties: {
+                  connectionId: { type: 'string', format: 'uuid' },
+                  content: { type: 'string', example: 'Hello!' },
+                  lang: { type: 'string', example: 'en' },
+                  threadId: { type: 'string' }
+                }
+              },
+              examples: {
+                simple: {
+                  summary: 'Minimal',
+                  value: { connectionId: '11111111-2222-3333-4444-555555555555', content: 'Hello there!' }
+                },
+                withLang: {
+                  summary: 'With language',
+                  value: { connectionId: '11111111-2222-3333-4444-555555555555', content: 'Bonjour', lang: 'fr' }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          '201': {
+            description: 'Basic message sent',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        message: { $ref: '#/components/schemas/Message' }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     },
     '/api/v1/messages/search': {
       get: {
@@ -941,6 +1015,33 @@ export const openapiSpec = {
           },
         },
       },
+    },
+    '/api/v1/events/basicmessages': {
+      get: {
+        summary: 'Subscribe to live basic messages (SSE)',
+        tags: ['Events'],
+        description: 'Server-Sent Events stream emitting real-time BasicMessage deliveries as they are processed. Each event name is "basicmessage" and data includes messageId, connectionId, fromDid, content, lang, createdTime, encrypted, attachmentsCount.\n\nNotes: This is a unidirectional stream; reconnect on network failure. Filter client-side by connectionId if needed.',
+        operationId: 'subscribeBasicMessages',
+        responses: {
+          '200': {
+            description: 'Event stream established',
+            content: {
+              'text/event-stream': {
+                schema: {
+                  type: 'string',
+                  description: 'SSE stream. Each event formatted as:\n\n event: basicmessage\\n data: {"messageId":"...","connectionId":"...","content":"..."}\\n\\n'
+                },
+                examples: {
+                  sample: {
+                    summary: 'SSE event example',
+                    value: 'event: basicmessage\ndata: {"messageId":"abc-123","connectionId":"1111-2222","fromDid":"did:peer:xyz","content":"Hello","lang":"en","createdTime":1710000000,"encrypted":true,"attachmentsCount":0}\n\n'
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     },
   },
 } as const;

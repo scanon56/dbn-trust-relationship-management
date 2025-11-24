@@ -98,6 +98,7 @@ export interface ServiceEndpoint {
   type: string;
   serviceEndpoint: string | { uri: string; accept?: string[]; routing_keys?: string[] };
   protocols?: string[];
+  description?: string; // Optional human-readable description
 }
 
 export interface EncryptRequest {

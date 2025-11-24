@@ -18,6 +18,8 @@ import healthRoutes from './api/routes/health.routes';
 import didcommRoutes from './api/routes/didcomm.routes';
 import connectionsRoutes from './api/routes/connections.routes';
 import messagesRoutes from './api/routes/messages.routes';
+import eventsRoutes from './api/routes/events.routes';
+import basicMessagesRoutes from './api/routes/basicmessages.routes';
 
 // Add protocol handler registration at startup
 
@@ -61,6 +63,8 @@ app.use('/health', healthRoutes);
 app.use('/didcomm', didcommRoutes);
 app.use('/api/v1/connections', connectionsRoutes);
 app.use('/api/v1/messages', messagesRoutes);
+app.use('/api/v1/basicmessages', basicMessagesRoutes);
+app.use('/api/v1/events', eventsRoutes);
 
 app.use('/api-docs', swaggerRoutes);
 

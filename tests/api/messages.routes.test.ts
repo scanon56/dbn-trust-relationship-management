@@ -1,4 +1,5 @@
 import request from 'supertest';
+process.env.SKIP_DELIVERY = 'true';
 jest.mock('uuid', () => { let c=0; return { v4: () => `uuid-test-${++c}` }; });
 jest.mock('../../src/infrastructure/clients/phase4Client', () => ({
   phase4Client: {

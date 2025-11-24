@@ -24,7 +24,8 @@
  */
 
 interface ApiResponse<T> { success: boolean; data: T }
-interface Connection { id: string; state: string; myDid: string; theirDid: string }
+// Local shape for connection records returned by API; renamed to avoid global/interface merges
+interface HandshakeConnection { id: string; state: string; myDid: string; theirDid: string }
 
 const INVITER_URL = process.env.INVITER_URL || 'http://localhost:3001';
 const INVITEE_URL = process.env.INVITEE_URL || 'http://localhost:3002';
@@ -63,7 +64,7 @@ async function main() {
   console.log('Starting handshake...');
 
   // 1. Create invitation on inviter
-  const inviteData = await post<{ connection: Connection; invitationUrl: string }>(
+  const inviteData = await post<{ connection: HandshakeConnection; invitationUrl: string }>(
     INVITER_URL,
     '/invitations',
     { myDid: INVITER_DID, label: 'Handshake Demo (Inviter)' }
@@ -74,7 +75,7 @@ async function main() {
   console.log(`[INFO] Invitation URL: ${invitationUrl}`);
 
   // 2. Accept invitation on invitee
-  const acceptData = await post<{ connection: Connection }>(
+  const acceptData = await post<{ connection: HandshakeConnection }>(
     INVITEE_URL,
     '/accept-invitation',
     { myDid: INVITEE_DID, invitation: invitationUrl, label: 'Handshake Demo (Invitee)' }
@@ -95,11 +96,11 @@ async function main() {
     await new Promise(r => setTimeout(r, POLL_INTERVAL_MS));
 
     // Fetch updated records
-    const inviterLatest = await get<{ connection: Connection }>(
+    const inviterLatest = await get<{ connection: HandshakeConnection }>(
       INVITER_URL,
       `/${inviterConnection.id}`
     ).then(d => d.connection);
-    const inviteeLatest = await get<{ connection: Connection }>(
+    const inviteeLatest = await get<{ connection: HandshakeConnection }>(
       INVITEE_URL,
       `/${inviteeConnection.id}`
     ).then(d => d.connection);

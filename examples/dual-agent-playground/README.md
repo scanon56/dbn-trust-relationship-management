@@ -51,8 +51,8 @@ Flow:
 1. In Agent A panel set API Base `http://localhost:3001`, fill DID, click **Create Invitation**.
 2. Invitation URL appears and is copied to Agent B panel.
 3. In Agent B panel set API Base `http://localhost:3002`, fill DID, click **Accept Invitation**.
-4. Agent B sends a DIDComm connection request to Agent A's DIDComm endpoint; Agent A auto-sends a response; both sides transition to `active` automatically. Status text updates while polling.
-5. When status shows `active`, messaging buttons enable; exchange BasicMessage DIDComm messages.
+4. Agent B sends a DIDComm connection request to Agent A's DIDComm endpoint; Agent A auto-sends a response; both sides transition to `complete` automatically. Status text updates while polling.
+5. When status shows `complete`, messaging buttons enable; exchange BasicMessage DIDComm messages.
 
 ### Optional: Separate Databases for Realistic Isolation
 You can give each agent its own database so each side only sees its local connection row:
@@ -109,7 +109,7 @@ Port 3001                               Port 3002
                                              ↓
                                              handleResponse()
                                              ↓
-                                             Connection ACTIVE
+                                             Connection COMPLETE
                                              ↓
                                              Build ack message
                                              ↓
@@ -120,19 +120,19 @@ Port 3001                               Port 3002
       ↓
       handleAck()
       ↓
-      Connection ACTIVE
+      Connection COMPLETE
 
-In dual-DB mode each agent’s connection record advances independently (inviter: invited→requested→active, invitee: requested→responded→active). Use the correlation ID (`dbn:cid`) to correlate handshake logs across both databases.
+In dual-DB mode each agent’s connection record advances independently (inviter: invited→requested→complete, invitee: requested→responded→complete). Use the correlation ID (`dbn:cid`) to correlate handshake logs across both databases.
 
-Manual **Activate** buttons remain as fallback if one side cannot deliver DIDComm messages (e.g., only one server running). When both servers are up they are not needed.
+Manual activation buttons are deprecated; handshake auto-completes when both servers are running. If only one server runs the flow cannot progress.
 
 ## Notes
 - Targeted invitation: Provide `Target DID` before creating invitation (optional). If present, only that DID should accept meaningfully.
-- Handshake states: `invited → requested → responded → active` occur automatically across the two backends.
+- Handshake states: `invited → requested → responded → complete` occur automatically across the two backends.
 - Message type used: `https://didcomm.org/basicmessage/2.0/message` with a `body.content` string.
 - Refreshing messages queries `/api/v1/messages?connectionId=...`.
 - Correlation ID: Invitation URLs carry a `dbn:cid` inside the base64 `_oob` segment. Decode it to correlate Create → Accept → Request logs.
-- Polling: The UI polls connection state every 2s until `active` or timeout (~2 min).
+- Polling: The UI polls connection state every 2s until `complete` or timeout (~2 min).
 - Transport Health: Each panel shows DIDComm transport health (GET `/didcomm/health`). Values: `healthy`, `network`, `http <code>`, or `unknown`. A failing transport prevents handshake messages from arriving.
 
 ## Extending
@@ -148,7 +148,7 @@ Manual **Activate** buttons remain as fallback if one side cannot deliver DIDCom
 | Stuck in `requested` | Agent A server not running or auto-response failed; use manual Activate as fallback. |
 | Transport shows `network` | Server unreachable; verify port & process, firewall, or container mapping. |
 | Transport shows `http 415` | DIDComm content-type mismatch; backend must accept `application/didcomm-encrypted+json`. |
-| Cannot send message | Wait until status shows `active` or use Activate fallback. |
+| Cannot send message | Wait until status shows `complete`. |
 | Empty message list | Use **Refresh Messages** after sending or acceptance. |
 | CORS errors | Confirm server middleware; adjust if cross-origin hosting playground. |
 

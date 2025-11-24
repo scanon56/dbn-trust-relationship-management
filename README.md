@@ -24,7 +24,7 @@ Requires `psql` in PATH and `.env` at the project root. See `scripts/README.md` 
 ## Features
 
 - ✅ Out-of-band invitation creation and acceptance
-- ✅ Connection lifecycle management (invited → requested → responded → active)
+- ✅ Connection lifecycle management (invited → requested → responded → complete)
 - ✅ DIDComm v2 message encryption/decryption
 - ✅ Protocol handlers: BasicMessage, TrustPing, Connection
 - ✅ Capability discovery from peer DID Documents
@@ -86,7 +86,7 @@ Query locally:
 ```sql
 SELECT id, state, metadata->>'correlationId' AS correlation_id
 FROM connections
-WHERE state IN ('invited','requested','responded','active');
+WHERE state IN ('invited','requested','responded','complete');
 ```
 Filter structured logs (example):
 ```bash
@@ -176,6 +176,26 @@ DB_NAME=dbn_trust_management_b ./scripts/db-helper.sh connections
 ```
 
 Connection rows are now isolated per agent: the inviter advances its single record through states without clashing with the invitee’s independent record.
+
+### Environment Flags
+
+| Variable | Purpose | Default | Recommended Scope |
+|----------|---------|---------|-------------------|
+| `SKIP_DELIVERY` | When set to `true`, outbound message routing in `MessageRouter` skips encryption + HTTP delivery and marks messages as `sent` immediately. Used to avoid network + crypto overhead in API route tests. | unset / `false` | Jest API route tests, local fast experimentation |
+
+Details:
+- The optimization is checked once per outbound message: if `process.env.SKIP_DELIVERY === 'true'`, the router updates state to `sent` and returns before Phase 4 encryption or fetch delivery.
+- Unit tests for `MessageRouter` do NOT set this flag so encryption/error paths remain covered.
+- Do NOT enable in integration or production environments; it suppresses both transport and crypto, yielding misleading success states.
+- API tests (`tests/api/messages.routes.test.ts`, `tests/api/basicmessages.routes.test.ts`) explicitly set the flag at top of file before importing `server.ts`.
+
+Enable quickly:
+```bash
+SKIP_DELIVERY=true npm test
+```
+or inside an individual test file (preferred for scoping) before `import app`.
+
+If you need to simulate delivery failures while using this flag, unset it for that specific test case.
 
 ### Adding a New Protocol Handler
 

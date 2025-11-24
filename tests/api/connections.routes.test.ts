@@ -150,8 +150,8 @@ describe('Connections Routes', () => {
     expect(res.body.data).toHaveProperty('protocols');
   });
 
-  it('pings connection (active required)', async () => {
-    // Create and manually set active state for ping
+  it('pings connection (complete required)', async () => {
+    // Create and manually set complete state for ping
     const created = await request(app).post('/api/v1/connections/invitations').send({ myDid: 'did:example:pingA' });
     const id = created.body.data.connection.id;
     await connectionRepository.updateState(id, 'complete');
