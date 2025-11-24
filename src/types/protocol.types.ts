@@ -5,6 +5,7 @@ import { Connection } from './connection.types';
 export interface MessageContext {
   connectionId?: string;
   connection?: Connection; // Full connection object if available
+  receivedAt: Date;
   direction: 'inbound' | 'outbound';
   transport: 'http' | 'websocket';
   encrypted: boolean;

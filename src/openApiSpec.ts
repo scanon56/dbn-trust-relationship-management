@@ -14,6 +14,10 @@ export const openapiSpec = {
   servers: [
     {
       url: 'http://localhost:3001',
+      description: 'Local development server A',
+    },
+    {
+      url: 'http://localhost:3002',
       description: 'Local development server',
     },
     {
@@ -25,7 +29,7 @@ export const openapiSpec = {
     {
       name: 'Connections',
       description:
-        'Manage DIDComm connections. Typical flow: 1) Create invitation, 2) Share the invitation URL, 3) Accept the invitation from the other agent, 4) Connection moves to active state. In dual-instance local testing each agent may use a separate database (dbn_trust_management_a / dbn_trust_management_b) and sees only its own side of the handshake; use the correlationId (dbn:cid) to trace across both.',
+        'Manage DIDComm connections. Typical flow: 1) Create invitation, 2) Share the invitation URL, 3) Accept the invitation from the other agent (invited → requested), 4) Respond (requested → responded), 5) Acknowledge / confirm (responded → complete). In dual-instance local testing each agent may use a separate database (dbn_trust_management_a / dbn_trust_management_b) and sees only its own side of the handshake; use the correlationId (dbn:cid) to trace across both.',
     },
     {
       name: 'Messages',
@@ -43,72 +47,63 @@ export const openapiSpec = {
     schemas: {
       Connection: {
         type: 'object',
+        description: 'Represents one side of a DIDComm connection. States advance independently per role.',
         properties: {
-          id: { type: 'string', format: 'uuid', description: 'Internal connection identifier.' },
-          myDid: { type: 'string', example: 'did:web:example.com:alice', description: 'Your DID used for this connection.' },
-          theirDid: { type: 'string', example: 'did:web:example.com:bob', description: "Peer's DID once known (set after acceptance)." },
-          theirLabel: { type: 'string', example: 'Bob Agent', description: 'Human-friendly label for the peer.' },
-          state: { 
-            type: 'string', 
-            enum: ['invited', 'requested', 'responded', 'active', 'completed', 'error'],
-            description: 'Connection state machine status.'
-          },
-          role: { type: 'string', enum: ['inviter', 'invitee'], description: 'Your role in the connection flow.' },
-          theirEndpoint: { type: 'string', example: 'https://bob.example.com/didcomm', description: 'Resolved DIDComm service endpoint for the peer.' },
-          theirProtocols: { 
-            type: 'array', 
-            items: { type: 'string' },
-            example: ['https://didcomm.org/basicmessage/2.0', 'https://didcomm.org/trust-ping/2.0'],
-            description: 'Protocols the peer supports (from capability discovery).'
-          },
-          theirServices: { type: 'array', items: { type: 'object' }, description: 'Raw DID service entries resolved for the peer.' },
-          invitation: { type: 'object', description: 'Out-of-band invitation object.' },
-          invitationUrl: { type: 'string', description: 'Shareable invitation URL (oob=...)' },
-          tags: { type: 'array', items: { type: 'string' }, description: 'Arbitrary tags for filtering and organization.' },
-          notes: { type: 'string', description: 'Freeform notes about this connection.' },
-          metadata: { type: 'object', description: 'Arbitrary key/value metadata for custom needs.' },
-          createdAt: { type: 'string', format: 'date-time', description: 'Creation timestamp.' },
-          updatedAt: { type: 'string', format: 'date-time', description: 'Last update timestamp.' },
-          lastActiveAt: { type: 'string', format: 'date-time', description: 'Last time a message was exchanged.' },
-          correlationId: { type: 'string', description: 'Tracing correlation ID (also present in metadata.correlationId).', example: 'c6f9d1a2-3c0f-4d7e-9b29-0d9c4f52b1e2' },
-        },
-        description: 'Represents one side of a DIDComm connection. In a dual-database setup (e.g., Agent A vs Agent B) each agent maintains its own record with local role perspective; states advance independently (inviter: invited→requested→active, invitee: requested→responded→active).',
+          id: { type: 'string', format: 'uuid' },
+          myDid: { type: 'string', example: 'did:web:example.com:alice' },
+          theirDid: { type: 'string', example: 'did:web:example.com:bob' },
+          theirLabel: { type: 'string', example: 'Bob Agent' },
+          state: { type: 'string', enum: ['invited', 'requested', 'responded', 'complete', 'error'] },
+          role: { type: 'string', enum: ['inviter', 'invitee'] },
+          theirEndpoint: { type: 'string', example: 'https://bob.example.com/didcomm' },
+          theirProtocols: { type: 'array', items: { type: 'string' } },
+          theirServices: { type: 'array', items: { type: 'object' } },
+          invitation: { $ref: '#/components/schemas/OutOfBandInvitation' },
+          invitationUrl: { type: 'string' },
+          tags: { type: 'array', items: { type: 'string' } },
+          notes: { type: 'string' },
+          metadata: { type: 'object' },
+          createdAt: { type: 'string', format: 'date-time' },
+          updatedAt: { type: 'string', format: 'date-time' },
+          lastActiveAt: { type: 'string', format: 'date-time' },
+          correlationId: { type: 'string' },
         },
       },
       Message: {
         type: 'object',
         properties: {
-          id: { type: 'string', format: 'uuid', description: 'Internal message record ID.' },
-          messageId: { type: 'string', description: 'DIDComm message @id.' },
-          threadId: { type: 'string', description: 'DIDComm ~thread thid.' },
-          parentId: { type: 'string', format: 'uuid', description: 'Optional parent message (for retries or threading).' },
-          connectionId: { type: 'string', format: 'uuid', description: 'Associated connection ID.' },
-          type: { type: 'string', example: 'https://didcomm.org/basicmessage/2.0/message', description: 'DIDComm message type.' },
-          direction: { type: 'string', enum: ['inbound', 'outbound'], description: 'Inbound vs outbound relative to this service.' },
-          fromDid: { type: 'string', description: 'Sender DID (when known).' },
-          toDids: { type: 'array', items: { type: 'string' }, description: 'Recipient DIDs.' },
-          body: { type: 'object', description: 'Message body content as per DIDComm type.' },
-          attachments: { type: 'array', items: { type: 'object' }, description: 'Optional DIDComm attachments.' },
-          state: { type: 'string', enum: ['pending', 'sent', 'delivered', 'failed', 'processed'], description: 'Delivery/processing state.' },
-          errorMessage: { type: 'string', description: 'Error details when state = failed.' },
-          retryCount: { type: 'integer', description: 'Number of retry attempts for failed messages.' },
-          metadata: { type: 'object', description: 'Arbitrary key/value metadata for custom needs.' },
-          createdAt: { type: 'string', format: 'date-time', description: 'Creation timestamp.' },
-          processedAt: { type: 'string', format: 'date-time', description: 'When inbound message was processed.' },
+          id: { type: 'string', format: 'uuid' },
+          messageId: { type: 'string' },
+          threadId: { type: 'string' },
+          parentId: { type: 'string', format: 'uuid' },
+          connectionId: { type: 'string', format: 'uuid' },
+          type: { type: 'string', example: 'https://didcomm.org/basicmessage/2.0/message' },
+          direction: { type: 'string', enum: ['inbound', 'outbound'] },
+          fromDid: { type: 'string' },
+          toDids: { type: 'array', items: { type: 'string' } },
+          body: { type: 'object' },
+          attachments: { type: 'array', items: { type: 'object' } },
+          state: { type: 'string', enum: ['pending', 'sent', 'delivered', 'failed', 'processed'] },
+          errorMessage: { type: 'string' },
+          retryCount: { type: 'integer' },
+          metadata: { type: 'object' },
+          createdAt: { type: 'string', format: 'date-time' },
+          processedAt: { type: 'string', format: 'date-time' },
         },
       },
       OutOfBandInvitation: {
         type: 'object',
+        required: ['@type', '@id', 'services'],
         properties: {
-          '@type': { type: 'string', example: 'https://didcomm.org/out-of-band/2.0/invitation', description: 'DIDComm OOB 2.0 invitation type.' },
-          '@id': { type: 'string', description: 'Unique identifier for the invitation.' },
-          label: { type: 'string', description: 'Human-friendly label for the inviter.' },
-          goal_code: { type: 'string', description: 'Optional goal_code per OOB spec.' },
-          goal: { type: 'string', description: 'Optional description of the purpose of the invitation.' },
-          accept: { type: 'array', items: { type: 'string' }, description: 'Accepted media types.' },
-          services: { type: 'array', items: { type: 'object' }, description: 'Service entries (DID or inline service blocks).' },
-          'dbn:target': { type: 'string', description: 'Target DID for targeted invitations' },
-          'dbn:cid': { type: 'string', description: 'Correlation ID for tracing invitation lifecycle.' },
+          '@type': { type: 'string', example: 'https://didcomm.org/out-of-band/2.0/invitation' },
+          '@id': { type: 'string' },
+          label: { type: 'string' },
+          goal_code: { type: 'string' },
+          goal: { type: 'string' },
+          accept: { type: 'array', items: { type: 'string' } },
+          services: { type: 'array', items: { type: 'object' } },
+          'dbn:target': { type: 'string' },
+          'dbn:cid': { type: 'string' },
         },
       },
       ErrorResponse: {
@@ -127,6 +122,7 @@ export const openapiSpec = {
       },
     },
   },
+
   paths: {
     '/health': {
       get: {
@@ -311,7 +307,7 @@ export const openapiSpec = {
         summary: 'Accept out-of-band invitation',
         tags: ['Connections'],
         description:
-          'Step 2: Accept an invitation received from a peer.\n\nIn Swagger: Paste the invitationUrl (oob=...) into the invitation field as a string, or paste the full invitation JSON. Set myDid to your DID and optionally a label. Execute to create an active (or progressing) connection.',
+          'Step 2: Accept an invitation received from a peer.\n\nIn Swagger: Paste the invitationUrl (oob=...) into the invitation field as a string, or paste the full invitation JSON. Set myDid to your DID and optionally a label. Execute to create a progressing connection (invited → requested). Subsequent protocol messages will advance it to responded then complete.',
         operationId: 'acceptInvitation',
         requestBody: {
           required: true,
@@ -402,7 +398,7 @@ export const openapiSpec = {
             in: 'query', 
             schema: { 
               type: 'string', 
-              enum: ['invited', 'requested', 'responded', 'active', 'completed', 'error'] 
+              enum: ['invited', 'requested', 'responded', 'complete', 'error'] 
             } 
           },
           { name: 'protocols', in: 'query', schema: { type: 'string' }, description: 'Comma-separated protocol IDs' },
@@ -640,7 +636,7 @@ export const openapiSpec = {
       post: {
         summary: 'Send trust ping',
         tags: ['Connections'],
-        description: 'Check connection health and measure response time. Requires an active connection.',
+        description: 'Check connection health and measure response time. Requires a complete connection.',
         operationId: 'trustPing',
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
@@ -664,47 +660,6 @@ export const openapiSpec = {
                     },
                   },
                 },
-              },
-            },
-          },
-        },
-      },
-    },
-    '/api/v1/connections/{id}/activate': {
-      post: {
-        summary: 'Manually activate connection',
-        tags: ['Connections'],
-        description: 'Temporary helper to auto-progress a connection through requested/responded to active for testing prior to full protocol support.',
-        operationId: 'activateConnection',
-        parameters: [
-          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-        ],
-        responses: {
-          '200': {
-            description: 'Connection activated',
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  properties: {
-                    success: { type: 'boolean' },
-                    data: {
-                      type: 'object',
-                      properties: {
-                        connection: { $ref: '#/components/schemas/Connection' },
-                        correlationId: { type: 'string', description: 'Tracing correlation ID for this connection.' },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-          '400': {
-            description: 'Invalid state for activation',
-            content: {
-              'application/json': {
-                schema: { $ref: '#/components/schemas/ErrorResponse' },
               },
             },
           },

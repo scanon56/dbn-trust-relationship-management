@@ -8,7 +8,13 @@ import { protocolRegistry } from '../protocols/ProtocolRegistry';
 import { phase4Client } from '../../infrastructure/clients/phase4Client';
 import { logger } from '../../utils/logger';
 import { MessageError } from '../../utils/errors';
-
+/**
+ * Message Router
+ * 
+ * Routes DIDComm messages:
+ * - Outbound: Encrypts and sends to peer endpoints via HTTP
+ * - Inbound: Handled by MessageProcessor (separate module)
+ */
 export class MessageRouter {
 
   /**
@@ -46,6 +52,7 @@ export class MessageRouter {
       // Create message context
       const context: MessageContext = {
         connectionId,
+        receivedAt: new Date(),
         direction: 'inbound',
         transport: 'http',
         encrypted: true,
@@ -79,9 +86,11 @@ export class MessageRouter {
     connectionId: string
   ): Promise<void> {
     logger.info('Routing outbound message', {
+      connectionId,
       messageId: message.id,
       type: message.type,
-      connectionId,
+      from: message.from,
+      to: message.to, 
     });
 
     try {
@@ -122,7 +131,7 @@ export class MessageRouter {
             { connectionId, state: connection.state }
           );
         }
-      } else if (connection.state !== 'active') {
+      } else if (connection.state !== 'complete') {
         throw new MessageError(
           'Connection is not active',
           'CONNECTION_NOT_ACTIVE',
@@ -161,6 +170,11 @@ export class MessageRouter {
         plaintext: JSON.stringify(message),
         from: connection.myDid,
       });
+      logger.debug('Message encrypted', {
+        connectionId,
+        kid: encrypted.kid,
+        encryptionType: encrypted.from ? 'authcrypt' : 'anoncrypt',
+      });
 
       // Send to peer endpoint, include recipient DID so transport can decrypt
       await this.sendToEndpoint(connection.theirEndpoint, encrypted.jwe, connection.theirDid);
@@ -170,6 +184,10 @@ export class MessageRouter {
 
       logger.info('Outbound message sent successfully', {
         messageId: message.id,
+        messageType: message.type,
+        from: message.from,
+        to: message.to,
+        connectionId,
         endpoint: connection.theirEndpoint,
       });
     } catch (error) {
@@ -199,6 +217,9 @@ export class MessageRouter {
 
   /**
    * Send encrypted message to peer endpoint
+   * @param endpoint - Peer's service endpoint URL
+   * @param jwe - Encrypted JWE string
+   * @param connectionId - Connection ID for logging
    */
   private async sendToEndpoint(endpoint: string, encryptedMessage: string, recipientDid: string): Promise<void> {
     logger.debug('Sending to endpoint', { endpoint });

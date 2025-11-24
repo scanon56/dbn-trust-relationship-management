@@ -16,11 +16,18 @@ import { DIDCommMessage } from '../../types/didcomm.types';
 import { logger, withCorrelation } from '../../utils/logger';
 import { ConnectionError } from '../../utils/errors';
 import { config } from '../../config';
+import { request } from 'http';
 
 export class ConnectionManager {
 
   /**
    * Create an out-of-band invitation
+   * Who calls it: Inviter (the party creating the connection)
+    What it does:
+      Creates a peer DID for the connection
+      Builds the OOB invitation with service endpoint
+      Stores connection in invited state
+      Returns invitation URL to share
    */
   async createInvitation(params: CreateInvitationParams): Promise<{ connection: Connection; invitationUrl: string; invitation: OutOfBandInvitation; }> {
     const correlationId = uuidv4();
@@ -32,8 +39,9 @@ export class ConnectionManager {
     });
 
     const tempConnectionId = uuidv4();
+    // create peer DID for connection
     const { record: peerDIDRecord } = await didManager.createPeerDIDForConnection(params.myDid, tempConnectionId);
-
+    // build out-of-band invitation with service endpoint
     const invitation: OutOfBandInvitation = {
       '@type': 'https://didcomm.org/out-of-band/2.0/invitation',
       '@id': uuidv4(),
@@ -65,6 +73,7 @@ export class ConnectionManager {
 
     const connection = await connectionRepository.create({
       myDid: peerDIDRecord.did,
+      // Use explicit null placeholder until invitee DID known
       theirDid: params.targetDid || '',
       theirLabel: undefined,
       state: 'invited',
@@ -93,6 +102,13 @@ export class ConnectionManager {
   }
 
   async acceptInvitation(params: AcceptInvitationParams): Promise<Connection> {
+    /*  Who calls it: Invitee (the party accepting the connection)
+        What it does:
+            Parses invitation
+            Creates own peer DID
+            Creates connection record in requested state
+            Sends connection request message to inviter
+    */
     try {
       const invitation = typeof params.invitation === 'string'
         ? this.parseInvitationUrl(params.invitation)
@@ -172,8 +188,20 @@ export class ConnectionManager {
       }
 
       const tempConnectionId = uuidv4();
-      const { record: ourPeerDIDRecord, didDocument: ourPeerDIDDoc } = await didManager.createPeerDIDForConnection(params.myDid, tempConnectionId);
+      const { record: ourPeerDIDRecord, didDocument: ourPeerDIDDoc } = 
+        await didManager.createPeerDIDForConnection(params.myDid, tempConnectionId);
 
+        corrLogger.debug('Peer DID and Document created', {
+        ourPeerDid: ourPeerDIDRecord.did,
+        hasDIDDoc: !!ourPeerDIDDoc,
+        didDocId: ourPeerDIDDoc?.id,
+        serviceCount: ourPeerDIDDoc?.service?.length || 0,
+         });
+
+corrLogger.info('Our peer DID created for connection', {
+  ourPeerDid: ourPeerDIDRecord.did,
+  theirDid,
+});
       const connection = await connectionRepository.create({
         myDid: ourPeerDIDRecord.did,
         theirDid,
@@ -241,6 +269,14 @@ export class ConnectionManager {
   ): Promise<void> {
     const correlationId = (connection.metadata?.correlationId as string) || (invitation as any)['dbn:cid'];
     const corrLogger = correlationId ? withCorrelation(correlationId) : logger;
+    
+    corrLogger.debug('sendConnectionRequest called', {
+      connectionId: connection.id,
+      receivedDIDDoc: !!ourDIDDoc,
+      didDocType: typeof ourDIDDoc,
+      didDocId: ourDIDDoc?.id,
+    });
+  
     corrLogger.info('Sending connection request', {
       connectionId: connection.id,
       to: connection.theirDid,
@@ -261,10 +297,18 @@ export class ConnectionManager {
         invitation_id: invitation['@id'],
       },
     };
+    // Log to verify DID Document is included
+    const messageBody = requestMessage.body as any;
+    corrLogger.debug('Connection request message body', {
+      hasDIDDoc: !!messageBody.connection?.did_doc,
+      didDocKeys: messageBody.connection?.did_doc ? Object.keys(messageBody.connection.did_doc) : [],
+      serviceCount: messageBody.connection?.did_doc?.service?.length || 0,
+    });
 
     try {
       await messageRouter.routeOutbound(requestMessage, connection.id);
       corrLogger.info('Connection request sent', { connectionId: connection.id });
+      corrLogger.debug('Connection request message', { message: requestMessage.from, to:requestMessage.to });  
     } catch (error) {
       corrLogger.warn('Connection request failed; retaining requested state', {
         connectionId: connection.id,
@@ -417,9 +461,9 @@ export class ConnectionManager {
   async ping(id: string): Promise<{ success: boolean; responseTime?: number }> {
     const connection = await this.getConnection(id);
 
-    if (connection.state !== 'active') {
+    if (connection.state !== 'complete') {
       throw new ConnectionError(
-        'Can only ping active connections',
+        'Can only ping complete connections',
         'INVALID_CONNECTION_STATE',
         { state: connection.state }
       );
@@ -510,12 +554,12 @@ export class ConnectionManager {
   async activateConnection(id: string): Promise<Connection> {
     const connection = await this.getConnection(id);
 
-    if (connection.state === 'active') {
-      logger.info('Connection already active', { connectionId: id });
+    if (connection.state === 'complete') {
+      logger.info('Connection already complete', { connectionId: id });
       return connection;
     }
 
-    const orderedStates: ConnectionState[] = ['invited', 'requested', 'responded', 'active'];
+    const orderedStates: ConnectionState[] = ['invited', 'requested', 'responded', 'complete'];
     let currentIndex = orderedStates.indexOf(connection.state);
 
     if (currentIndex === -1) {
@@ -527,7 +571,7 @@ export class ConnectionManager {
     }
 
     let updated = connection;
-    while (updated.state !== 'active') {
+    while (updated.state !== 'complete') {
       const nextState = orderedStates[currentIndex + 1];
       if (!nextState) {
         throw new ConnectionError(
@@ -539,13 +583,12 @@ export class ConnectionManager {
       ConnectionStateMachine.validateTransition(updated.state, nextState);
       updated = await connectionRepository.updateState(id, nextState);
       currentIndex++;
-      logger.info('Connection activation progressed', {
+      logger.info('Connection completion progressed', {
         connectionId: id,
         newState: updated.state,
       });
     }
-
-    logger.info('Connection activated via helper', { connectionId: id });
+    logger.info('Connection marked complete via helper', { connectionId: id });
     return updated;
   }
 }

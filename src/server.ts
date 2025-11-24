@@ -19,7 +19,23 @@ import didcommRoutes from './api/routes/didcomm.routes';
 import connectionsRoutes from './api/routes/connections.routes';
 import messagesRoutes from './api/routes/messages.routes';
 
+// Add protocol handler registration at startup
+
+import { messageProcessor } from './core/messages/MessageProcessor';
+import { connectionProtocol } from './core/protocols/ConnectionProtocol';
+import { protocolRegistry } from './core/protocols/ProtocolRegistry';
+
 const app = express();
+
+// Register protocol handlers
+protocolRegistry.register(connectionProtocol);
+
+logger.info('Registered protocols', {
+  protocols: protocolRegistry.listProtocols(),
+});
+// Add more protocol handlers as needed
+// messageProcessor.registerProtocol('https://didcomm.org/basicmessage/2.0', basicMessageProtocol);
+// messageProcessor.registerProtocol('https://didcomm.org/trust-ping/2.0', trustPingProtocol);
 
 // Security middleware
 app.use(helmet());

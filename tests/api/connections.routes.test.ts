@@ -132,7 +132,7 @@ describe('Connections Routes', () => {
     const direct = await connectionRepository.create({
       myDid: 'did:example:me-cap',
       theirDid: 'did:example:peer-cap',
-      state: 'active',
+      state: 'complete',
       role: 'inviter',
       theirEndpoint: 'https://peer.endpoint/messages',
     });
@@ -154,7 +154,7 @@ describe('Connections Routes', () => {
     // Create and manually set active state for ping
     const created = await request(app).post('/api/v1/connections/invitations').send({ myDid: 'did:example:pingA' });
     const id = created.body.data.connection.id;
-    await connectionRepository.updateState(id, 'active');
+    await connectionRepository.updateState(id, 'complete');
     const res = await request(app).post(`/api/v1/connections/${id}/ping`).send();
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);

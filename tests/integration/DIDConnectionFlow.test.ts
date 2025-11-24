@@ -84,6 +84,6 @@ describe('Integration: Invitation + Acceptance DID flow', () => {
 
     // Activate connection and confirm state progression
     const activated = await connectionManager.activateConnection(acceptedConnection.id);
-    expect(activated.state).toBe('active');
+    expect(activated.state).toBe('complete');
   });
 });

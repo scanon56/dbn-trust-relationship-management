@@ -69,6 +69,59 @@ Or run all three (A, B, UI) concurrently:
 npm run demo:dual:db
 ```
 
+Instance A (Inviter)                    Instance B (Invitee)
+Port 3001                               Port 3002
+─────────────────────────────────────────────────────────────
+
+1. Create Invitation
+   ↓
+   Generate URL
+   ↓
+   [Share URL manually] ──────────────→ 2. Accept Invitation
+                                           ↓
+                                           Extract A's endpoint
+                                           ↓
+                                           Create peer DID
+                                           ↓
+                                           Build request message
+                                           ↓
+                                           Encrypt with A's DID
+                                           ↓
+   3. Receive Request  ←─────────────────  POST to A's endpoint
+      POST /api/v1/messages/inbound        (http://localhost:3001)
+      ↓
+      Decrypt message
+      ↓
+      Route to ConnectionProtocol
+      ↓
+      handleRequest()
+      ↓
+      Build response message
+      ↓
+      Encrypt with B's DID
+      ↓
+      POST to B's endpoint ──────────────→ 4. Receive Response
+      (http://localhost:3002)                POST /api/v1/messages/inbound
+                                             ↓
+                                             Decrypt message
+                                             ↓
+                                             Route to ConnectionProtocol
+                                             ↓
+                                             handleResponse()
+                                             ↓
+                                             Connection ACTIVE
+                                             ↓
+                                             Build ack message
+                                             ↓
+                                             Encrypt
+                                             ↓
+   5. Receive Ack      ←─────────────────  POST to A's endpoint
+      POST /api/v1/messages/inbound
+      ↓
+      handleAck()
+      ↓
+      Connection ACTIVE
+
 In dual-DB mode each agent’s connection record advances independently (inviter: invited→requested→active, invitee: requested→responded→active). Use the correlation ID (`dbn:cid`) to correlate handshake logs across both databases.
 
 Manual **Activate** buttons remain as fallback if one side cannot deliver DIDComm messages (e.g., only one server running). When both servers are up they are not needed.

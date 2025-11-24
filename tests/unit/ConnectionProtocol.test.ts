@@ -40,14 +40,17 @@ describe('ConnectionProtocol', () => {
       body: { label: 'Invitee' },
     } as any;
 
-    await protocol.handle(requestMessage, { direction: 'inbound', transport: 'http', encrypted: true });
+    await protocol.handle(requestMessage, {
+      direction: 'inbound', transport: 'http', encrypted: true,
+      receivedAt: new Date(),
+    });
 
     expect(messageRouter.routeOutbound).toHaveBeenCalled();
     const [responseMsg] = (messageRouter.routeOutbound as jest.Mock).mock.calls[0];
     expect(responseMsg.type).toBe('https://didcomm.org/connections/1.0/response');
   });
 
-  test('handle response progresses to active', async () => {
+  test('handle response progresses to responded', async () => {
     // Create connection in requested state
     const connection = await connectionRepository.create({
       myDid: 'did:peer:invitee2',
@@ -65,13 +68,16 @@ describe('ConnectionProtocol', () => {
       body: { did: 'did:peer:inviter2' },
     } as any;
 
-    await protocol.handle(responseMessage, { direction: 'inbound', transport: 'http', encrypted: true });
+    await protocol.handle(responseMessage, {
+      direction: 'inbound', transport: 'http', encrypted: true,
+      receivedAt: new Date(),
+    });
 
     const updated = await connectionRepository.findById(connection.id);
-    expect(updated?.state).toBe('active');
+    expect(updated?.state).toBe('responded');
   });
 
-  test('handle ack activates responded connection', async () => {
+  test('handle ack completes responded connection', async () => {
     const connection = await connectionRepository.create({
       myDid: 'did:peer:invitee3',
       theirDid: 'did:peer:inviter3',
@@ -88,16 +94,19 @@ describe('ConnectionProtocol', () => {
       body: {},
     } as any;
 
-    await protocol.handle(ackMessage, { direction: 'inbound', transport: 'http', encrypted: true });
+    await protocol.handle(ackMessage, {
+      direction: 'inbound', transport: 'http', encrypted: true,
+      receivedAt: new Date(),
+    });
     const updated = await connectionRepository.findById(connection.id);
-    expect(updated?.state).toBe('active');
+    expect(updated?.state).toBe('complete');
   });
 
-  test('handle ack when already active leaves state unchanged', async () => {
+  test('handle ack when already complete leaves state unchanged', async () => {
     const connection = await connectionRepository.create({
       myDid: 'did:peer:invitee4',
       theirDid: 'did:peer:inviter4',
-      state: 'active',
+      state: 'complete',
       role: 'invitee',
       theirEndpoint: 'https://inviter.endpoint/messages',
     });
@@ -110,8 +119,8 @@ describe('ConnectionProtocol', () => {
       body: {},
     } as any;
 
-    await protocol.handle(ackMessage, { direction: 'inbound', transport: 'http', encrypted: true });
+    await protocol.handle(ackMessage, { direction: 'inbound', transport: 'http', encrypted: true, receivedAt: new Date() });
     const updated = await connectionRepository.findById(connection.id);
-    expect(updated?.state).toBe('active');
+    expect(updated?.state).toBe('complete');
   });
 });

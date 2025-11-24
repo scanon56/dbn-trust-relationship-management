@@ -18,7 +18,7 @@
     "playground:preview": "vite preview examples/dual-agent-playground/dist",
     "demo": "concurrently -k -n API,WEB -c green,cyan \"npm:dev\" \"npm:playground:dev\"",
     "dev:agent2": "PORT=3002 DIDCOMM_ENDPOINT=http://localhost:3002/didcomm tsx watch src/server.ts",
-    "demo:dual": "concurrently -k -n A,B,WEB -c green,magenta,cyan \"npm:dev\" \"npm:dev:agent2\" \"npm:playground:dev\""
+    "demo:dual": "concurrently -k -n A,B,WEB -c green,magenta,cyan \"npm:dev:agentA\" \"npm:dev:agentB\" \"npm:playground:dev\""
     ,"migrate:agentA": "DB_NAME=dbn_trust_management_a npm run migrate"
     ,"migrate:agentB": "DB_NAME=dbn_trust_management_b npm run migrate"
     ,"dev:agentA": "PORT=3001 DB_NAME=dbn_trust_management_a DIDCOMM_ENDPOINT=http://localhost:3001/didcomm tsx watch src/server.ts"
@@ -32,6 +32,7 @@
     ,"db:test:reset": "docker rm -f dbn-postgres-test || true && npm run db:test:up"
     ,"migrate:test": "NODE_ENV=test DOTENV_CONFIG_PATH=.env.test tsx src/infrastructure/database/migrate.ts"
     ,"decode:oob": "node scripts/decode-oob.js"
+    ,"handshake:log": "tsx scripts/handshake-state-log.ts"
   },
   "keywords": [],
   "author": "",

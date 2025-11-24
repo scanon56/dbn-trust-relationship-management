@@ -31,11 +31,11 @@ describe('MessageService', () => {
   });
 
   test('sendMessage success returns stored sent message', async () => {
-    // Prepare active connection
+    // Prepare complete connection
     const connection = await connectionRepository.create({
       myDid: uniqueDid('me'),
       theirDid: uniqueDid('them'),
-      state: 'active',
+      state: 'complete',
       role: 'inviter',
       theirEndpoint: 'https://peer.endpoint/messages',
     });
@@ -69,7 +69,7 @@ describe('MessageService', () => {
     const connection = await connectionRepository.create({
       myDid: uniqueDid('me'),
       theirDid: uniqueDid('them'),
-      state: 'active',
+      state: 'complete',
       role: 'inviter',
       theirEndpoint: 'https://peer.endpoint/messages',
     });
@@ -100,7 +100,7 @@ describe('MessageService', () => {
     const connection = await connectionRepository.create({
       myDid: uniqueDid('me'),
       theirDid: uniqueDid('them'),
-      state: 'active',
+      state: 'complete',
       role: 'inviter',
       theirEndpoint: 'https://peer.endpoint/messages',
     });
@@ -122,7 +122,7 @@ describe('MessageService', () => {
     const connection = await connectionRepository.create({
       myDid: uniqueDid('me'),
       theirDid: uniqueDid('them'),
-      state: 'active',
+      state: 'complete',
       role: 'inviter',
       theirEndpoint: 'https://peer.endpoint/messages',
     });

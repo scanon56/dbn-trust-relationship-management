@@ -19,7 +19,7 @@ describe('Messages Routes', () => {
     const conn = await connectionRepository.create({
       myDid: 'did:example:sender',
       theirDid: 'did:example:receiver',
-      state: 'active',
+      state: 'complete',
       role: 'inviter',
       theirEndpoint: 'https://peer.endpoint/messages',
     });

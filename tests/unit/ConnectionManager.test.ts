@@ -93,7 +93,7 @@ describe('ConnectionManager unit tests', () => {
     expect(connection.theirProtocols).toContain('https://didcomm.org/connections/1.0');
   });
 
-  test('activateConnection progresses states to active', async () => {
+  test('activateConnection progresses states to complete', async () => {
     const created = await connectionRepository.create({
       myDid: 'did:peer:alice',
       theirDid: 'did:peer:bob',
@@ -104,7 +104,7 @@ describe('ConnectionManager unit tests', () => {
       metadata: {},
     });
     const activated = await connectionManager.activateConnection(created.id);
-    expect(activated.state).toBe('active');
+    expect(activated.state).toBe('complete');
   });
 
   test('refreshCapabilities updates endpoint and protocols', async () => {
@@ -139,11 +139,11 @@ describe('ConnectionManager unit tests', () => {
     expect(updated.theirProtocols.length).toBeGreaterThan(0);
   });
 
-  test('activateConnection idempotency returns unchanged active connection', async () => {
+  test('activateConnection idempotency returns unchanged complete connection', async () => {
     const active = await connectionRepository.create({
       myDid: 'did:peer:alice',
       theirDid: 'did:peer:bob',
-      state: 'active',
+      state: 'complete',
       role: 'inviter',
       invitation: null,
       invitationUrl: undefined,
@@ -151,7 +151,7 @@ describe('ConnectionManager unit tests', () => {
     });
     const updateSpy = jest.spyOn(connectionRepository, 'updateState');
     const result = await connectionManager.activateConnection(active.id);
-    expect(result.state).toBe('active');
+    expect(result.state).toBe('complete');
     expect(updateSpy).not.toHaveBeenCalled();
   });
 
@@ -159,7 +159,7 @@ describe('ConnectionManager unit tests', () => {
     const active = await connectionRepository.create({
       myDid: 'did:peer:alice',
       theirDid: 'did:peer:bob',
-      state: 'active',
+      state: 'complete',
       role: 'inviter',
       invitation: null,
       invitationUrl: undefined,
@@ -175,7 +175,7 @@ describe('ConnectionManager unit tests', () => {
     const active = await connectionRepository.create({
       myDid: 'did:peer:alice',
       theirDid: 'did:peer:bob',
-      state: 'active',
+      state: 'complete',
       role: 'inviter',
       invitation: null,
       invitationUrl: undefined,

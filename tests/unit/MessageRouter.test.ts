@@ -40,7 +40,7 @@ describe('MessageRouter', () => {
     const connection = await connectionRepository.create({
       myDid: pair.myDid,
       theirDid: pair.theirDid,
-      state: 'active',
+      state: 'complete',
       role: 'inviter',
       theirEndpoint: 'https://peer.endpoint/messages',
     });
@@ -94,7 +94,7 @@ describe('MessageRouter', () => {
     const connection = await connectionRepository.create({
       myDid: pair.myDid,
       theirDid: pair.theirDid,
-      state: 'active',
+      state: 'complete',
       role: 'inviter',
     });
 
@@ -116,7 +116,7 @@ describe('MessageRouter', () => {
     const connection = await connectionRepository.create({
       myDid: pair.myDid,
       theirDid: pair.theirDid,
-      state: 'active',
+      state: 'complete',
       role: 'inviter',
       theirEndpoint: 'https://peer.endpoint/messages',
     });
@@ -146,7 +146,7 @@ describe('MessageRouter', () => {
     const connection = await connectionRepository.create({
       myDid: pair.myDid,
       theirDid: pair.theirDid,
-      state: 'active',
+      state: 'complete',
       role: 'inviter',
       theirEndpoint: 'https://peer.endpoint/messages',
     });
@@ -178,7 +178,7 @@ describe('MessageRouter', () => {
     const connection = await connectionRepository.create({
       myDid: 'did:example:recipient',
       theirDid: 'did:example:sender',
-      state: 'active',
+      state: 'complete',
       role: 'inviter',
       theirEndpoint: 'https://endpoint',
     });

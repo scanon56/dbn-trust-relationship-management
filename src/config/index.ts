@@ -39,4 +39,8 @@ export const config = {
     level: process.env.LOG_LEVEL || 'info',
     format: process.env.LOG_FORMAT || 'json',
   },
+  // Connection protocol behavior flags
+  connectionFlags: {
+    autoActivateOnResponse: process.env.CONNECTION_AUTO_ACTIVATE_ON_RESPONSE === 'true',
+  },
 } as const;

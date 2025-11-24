@@ -1,10 +1,13 @@
 // src/types/connection.types.ts
+// Standard Aries Connection Protocol states (RFC 0160):
+// invited -> requested -> responded -> complete
+// 'error' retained for internal error handling.
+// Backward compatibility: legacy 'active'/'completed' will be mapped to 'complete' when read.
 export type ConnectionState = 
-  | 'invited' 
-  | 'requested' 
-  | 'responded' 
-  | 'active' 
-  | 'completed'
+  | 'invited'
+  | 'requested'
+  | 'responded'
+  | 'complete'
   | 'error';
 
 export type ConnectionRole = 'inviter' | 'invitee';

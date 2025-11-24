@@ -3,6 +3,8 @@ import { pool } from '../../infrastructure/database/pool';
 import { Connection, ConnectionState, OutOfBandInvitation, ServiceEndpoint } from '../../types/connection.types';
 import { logger } from '../../utils/logger';
 import { ConnectionError } from '../../utils/errors';
+import { DatabaseError } from '../../utils/errors';
+import { ConnectionStateMachine } from './ConnectionsStateMachine';
 
 export class ConnectionRepository {
   
@@ -96,6 +98,75 @@ export class ConnectionRepository {
   }
 
   /**
+   * Find connection by my DID and invitation id (embedded in invitation JSON)
+   */
+  async findByMyDidAndInvitationId(myDid: string, invitationId: string): Promise<Connection | null> {
+    const query = `SELECT * FROM connections WHERE my_did = $1 AND state = 'invited' AND invitation->>'@id' = $2 LIMIT 1`;
+    try {
+      const result = await pool.query(query, [myDid, invitationId]);
+      if (result.rows.length === 0) return null;
+      return this.mapRowToConnection(result.rows[0]);
+    } catch (error) {
+      logger.error('Failed to find connection by invitation id', { myDid, invitationId, error });
+      throw error;
+    }
+  }
+
+  /**
+   * Update peer info once known (their_did and optional label)
+   */
+  async updatePeerInfo(id: string, data: { theirDid?: string; theirLabel?: string }): Promise<Connection> {
+    const sets: string[] = [];
+    const values: unknown[] = [];
+    let idx = 0;
+    if (data.theirDid !== undefined) {
+      idx++; sets.push(`their_did = $${idx}`); values.push(data.theirDid);
+    }
+    if (data.theirLabel !== undefined) {
+      idx++; sets.push(`their_label = $${idx}`); values.push(data.theirLabel);
+    }
+    if (!sets.length) {
+      return await this.findById(id) as Connection; // nothing to do
+    }
+    idx++; values.push(id);
+    const query = `UPDATE connections SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${idx} RETURNING *`;
+    try {
+      const result = await pool.query(query, values);
+      if (result.rows.length === 0) {
+        throw new ConnectionError('Connection not found', 'CONNECTION_NOT_FOUND', { id });
+      }
+      logger.info('Connection peer info updated', { connectionId: id });
+      return this.mapRowToConnection(result.rows[0]);
+    } catch (error) {
+      logger.error('Failed updating peer info', { id, error });
+      throw error;
+    }
+  }
+
+  // src/core/connections/ConnectionRepository.ts
+  // Add this method to your ConnectionRepository class
+
+  /**
+   * Find connection by their DID
+   */
+  async findByTheirDid(theirDid: string): Promise<Connection | null> {
+    try {
+      const result = await pool.query<Connection>(
+        'SELECT * FROM connections WHERE their_did = $1 LIMIT 1',
+        [theirDid]
+      );
+      return result.rows[0] || null;
+    } catch (error) {
+      logger.error('Error finding connection by their DID', { theirDid, error });
+      throw new DatabaseError(
+        'Failed to find connection by their DID',
+        'DB_FIND_BY_THEIR_DID_FAILED',
+        { theirDid, error }
+      );
+    }
+  }
+
+  /**
    * List connections with optional filters
    */
   async list(filters: {
@@ -177,24 +248,43 @@ export class ConnectionRepository {
   /**
    * Update connection state
    */
-  async updateState(id: string, state: ConnectionState): Promise<Connection> {
+  async updateState(id: string, state: ConnectionState, reason?: string): Promise<Connection> {
+    // Fetch previous state for logging
+    const prevQuery = 'SELECT state FROM connections WHERE id = $1';
+    const prevResult = await pool.query(prevQuery, [id]);
+    const previousState = prevResult.rows.length > 0 ? prevResult.rows[0].state : undefined;
+
     const query = `
       UPDATE connections 
       SET state = $1, last_active_at = NOW()
       WHERE id = $2
       RETURNING *
     `;
-    
     const result = await pool.query(query, [state, id]);
-    
+
     if (result.rows.length === 0) {
       throw new ConnectionError('Connection not found', 'CONNECTION_NOT_FOUND', { id });
     }
 
-    logger.info('Connection state updated', { 
-      connectionId: id, 
+    const sameState = previousState === state;
+    const validTransition = sameState || (previousState ? ConnectionStateMachine.canTransition(previousState, state) : true);
+
+    logger.info('Connection state transition', {
+      connectionId: id,
+      previousState,
       newState: state,
+      reason,
+      validTransition,
     });
+
+    if (!validTransition) {
+      logger.warn('Invalid connection state transition detected (not enforced)', {
+        connectionId: id,
+        previousState,
+        attemptedState: state,
+        reason,
+      });
+    }
 
     return this.mapRowToConnection(result.rows[0]);
   }
@@ -332,7 +422,8 @@ export class ConnectionRepository {
     my_did: string;
     their_did: string;
     their_label?: string | null;
-    state: ConnectionState;
+    // Allow legacy values not in ConnectionState (active, completed)
+    state: string;
     role: 'inviter' | 'invitee';
     their_endpoint?: string | null;
     their_protocols?: string[] | null;
@@ -346,12 +437,17 @@ export class ConnectionRepository {
     updated_at: Date;
     last_active_at?: Date | null;
   }): Connection {
+    const rawState = row.state;
+    const normalizedState: ConnectionState = (rawState === 'active' || rawState === 'completed' || rawState === 'complete')
+      ? 'complete'
+      : (rawState as ConnectionState);
+
     return {
       id: row.id,
       myDid: row.my_did,
       theirDid: row.their_did,
       theirLabel: row.their_label ?? undefined,
-      state: row.state,
+      state: normalizedState,
       role: row.role,
       theirEndpoint: row.their_endpoint ?? undefined,
       theirProtocols: row.their_protocols || [],

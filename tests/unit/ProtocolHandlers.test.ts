@@ -5,7 +5,6 @@ import { ConnectionProtocol } from '../../src/core/protocols/ConnectionProtocol'
 import { messageRepository } from '../../src/core/messages/MessageRepository';
 import { connectionRepository } from '../../src/core/connections/ConnectionRepository';
 import { MessageContext } from '../../src/types/protocol.types';
-import { Connection } from '../../src/types/connection.types';
 import { protocolRegistry } from '../../src/core/protocols';
 import { capabilityDiscovery } from '../../src/core/discovery/CapabilityDiscovery';
 
@@ -23,6 +22,7 @@ describe('Protocol Handlers', () => {
       direction: 'inbound',
       transport: 'http',
       encrypted: false,
+      receivedAt: new Date(),
     };
 
     const message = {
@@ -40,11 +40,12 @@ describe('Protocol Handlers', () => {
     expect(stored!.body.content).toBe('hi basic');
   });
 
-  test('TrustPingProtocol ping with response_requested true queues response', async () => {
+  test('TrustPingProtocol ping with response_requested true queues response and may complete connection', async () => {
+    // Use responded state so ping can finalize connection
     const connection = await connectionRepository.create({
       myDid: 'did:example:me',
       theirDid: 'did:example:them',
-      state: 'requested',
+      state: 'responded',
       role: 'inviter',
     });
 
@@ -54,6 +55,7 @@ describe('Protocol Handlers', () => {
       direction: 'inbound',
       transport: 'http',
       encrypted: true,
+      receivedAt: new Date(),
     };
 
     const pingMsg = {
@@ -75,9 +77,9 @@ describe('Protocol Handlers', () => {
     expect(response).toBeTruthy();
     expect(response!.state).toBe('pending');
 
-    // Connection should be active now
+    // Connection should be complete now
     const updatedConnection = await connectionRepository.findById(connection.id);
-    expect(updatedConnection!.state).toBe('active');
+    expect(updatedConnection!.state).toBe('complete');
   });
 
   test('TrustPingProtocol ping with response_requested false does not queue response', async () => {
@@ -93,6 +95,7 @@ describe('Protocol Handlers', () => {
       direction: 'inbound',
       transport: 'http',
       encrypted: true,
+      receivedAt: new Date(),
     };
     const pingMsg = {
       id: 'ping-2',
@@ -113,6 +116,7 @@ describe('Protocol Handlers', () => {
       direction: 'inbound',
       transport: 'http',
       encrypted: true,
+      receivedAt: new Date(),
     };
 
     const reqMsg = {
@@ -140,6 +144,7 @@ describe('Protocol Handlers', () => {
       direction: 'inbound',
       transport: 'http',
       encrypted: true,
+      receivedAt: new Date(),
     };
     const reqMsg = {
       id: 'conn-req-fail-cap',
@@ -156,7 +161,7 @@ describe('Protocol Handlers', () => {
     expect(spy).toHaveBeenCalled();
   });
 
-  test('ConnectionProtocol handleResponse updates existing connection to active', async () => {
+  test('ConnectionProtocol handleResponse updates existing connection to responded', async () => {
     // Pre-create connection in requested state
     const connection = await connectionRepository.create({
       myDid: 'did:example:inviter2',
@@ -170,6 +175,7 @@ describe('Protocol Handlers', () => {
       direction: 'inbound',
       transport: 'http',
       encrypted: true,
+      receivedAt: new Date(),
     };
     const respMsg = {
       id: 'conn-resp-1',
@@ -181,7 +187,7 @@ describe('Protocol Handlers', () => {
     } as any;
     await handler.handle(respMsg, context);
     const updated = await connectionRepository.findById(connection.id);
-    expect(updated!.state).toBe('active');
+    expect(updated!.state).toBe('responded');
   });
 
   test('ConnectionProtocol handleResponse stores message but no connection found', async () => {
@@ -191,6 +197,7 @@ describe('Protocol Handlers', () => {
       direction: 'inbound',
       transport: 'http',
       encrypted: true,
+      receivedAt: new Date(),
     };
     const respMsg = {
       id: 'conn-resp-missing',
@@ -221,6 +228,7 @@ describe('Protocol Handlers', () => {
       direction: 'inbound',
       transport: 'http',
       encrypted: true,
+      receivedAt: new Date(),
     };
     const respMsg = {
       id: 'conn-resp-fail-cap',
@@ -232,11 +240,11 @@ describe('Protocol Handlers', () => {
     } as any;
     await handler.handle(respMsg, context);
     const updated = await connectionRepository.findById(connection.id);
-    expect(updated!.state).toBe('active');
+    expect(updated!.state).toBe('responded');
     expect(spy).toHaveBeenCalled();
   });
 
-  test('ConnectionProtocol handleAck activates connection if not active', async () => {
+  test('ConnectionProtocol handleAck completes connection if not complete', async () => {
     const connection = await connectionRepository.create({
       myDid: 'did:example:inviter3',
       theirDid: 'did:example:invitee3',
@@ -249,6 +257,7 @@ describe('Protocol Handlers', () => {
       direction: 'inbound',
       transport: 'http',
       encrypted: true,
+      receivedAt: new Date(),
     };
     const ackMsg = {
       id: 'conn-ack-1',
@@ -260,6 +269,6 @@ describe('Protocol Handlers', () => {
     } as any;
     await handler.handle(ackMsg, context);
     const updated = await connectionRepository.findById(connection.id);
-    expect(updated!.state).toBe('active');
+    expect(updated!.state).toBe('complete');
   });
 });

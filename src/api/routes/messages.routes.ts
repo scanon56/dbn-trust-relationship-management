@@ -2,6 +2,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { messageService } from '../../core/messages/MessageService';
+import { messageProcessor } from '../../core/messages/MessageProcessor'; // NEW
+import { connectionRepository } from '../../core/connections/ConnectionRepository'; // NEW
 import { validateBody, validateQuery, validateParams } from '../middleware/validation';
 import {
   sendMessageSchema,
@@ -10,6 +12,7 @@ import {
   type ListMessagesQuery,
   type SearchMessagesQuery,
 } from '../schemas/message.schema';
+import { logger } from '../../utils/logger'; // NEW
 
 const router = Router();
 
@@ -21,6 +24,128 @@ const uuidParamSchema = z.object({
 const threadIdParamSchema = z.object({
   threadId: z.string().min(1, 'Thread ID is required'),
 });
+
+// ============================================================================
+// INBOUND DIDCOMM MESSAGE ENDPOINT (NEW)
+// ============================================================================
+
+/**
+ * POST /api/v1/messages/inbound
+ * 
+ * Receive encrypted DIDComm messages from peers
+ * This is the endpoint that other instances will call to deliver messages
+ */
+router.post('/inbound', async (req: Request, res: Response) => {
+  try {
+    const { jwe } = req.body;
+
+    if (!jwe || typeof jwe !== 'string') {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'INVALID_REQUEST',
+          message: 'Missing or invalid jwe field',
+        },
+      });
+    }
+
+    logger.info('Inbound message received', {
+      jweLength: jwe.length,
+    });
+
+    // Extract recipient DID from JWE header (kid field)
+    const recipientDid = await findRecipientDid(jwe);
+
+    if (!recipientDid) {
+      return res.status(400).json({
+        success: false,
+        error: {
+          code: 'RECIPIENT_NOT_FOUND',
+          message: 'Could not determine recipient DID',
+        },
+      });
+    }
+
+    // Process the message
+    const result = await messageProcessor.processInbound(jwe, recipientDid);
+
+    res.status(200).json({
+      success: true,
+      data: result,
+    });
+
+  } catch (error) {
+    logger.error('Error processing inbound message', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+
+    res.status(500).json({
+      success: false,
+      error: {
+        code: 'MESSAGE_PROCESSING_FAILED',
+        message: error instanceof Error ? error.message : 'Failed to process message',
+      },
+    });
+  }
+});
+
+/**
+ * Helper: Find which of our DIDs is the recipient
+ * 
+ * Tries to determine the recipient from JWE or by trying all our DIDs
+ */
+async function findRecipientDid(jwe: string): Promise<string | null> {
+  try {
+    // Parse JWE header to extract kid
+    const parts = jwe.split('.');
+    if (parts.length < 2) {
+      return null;
+    }
+
+    const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString());
+    const kid = header.kid;
+
+    if (kid) {
+      // Extract DID from kid (format: did:peer:xxx#key-1)
+      const did = kid.split('#')[0];
+      logger.debug('Extracted recipient DID from JWE header', { did });
+      return did;
+    }
+
+    // Fallback: Get all our peer DIDs and try them
+    // This is less efficient but more robust
+    const connections = await connectionRepository.list({});
+    const ourDids = [...new Set(connections.connections.map(c => c.myDid))];
+
+    logger.debug('Trying DIDs to decrypt', { didCount: ourDids.length });
+
+    for (const did of ourDids) {
+      try {
+        // Try to decrypt with this DID
+        const { phase4Client } = await import('../../infrastructure/clients/phase4Client');
+        await phase4Client.decrypt({ did, jwe });
+        logger.debug('Found recipient DID', { did });
+        return did;
+      } catch (error) {
+        // Not this DID, continue
+        continue;
+      }
+    }
+
+    logger.warn('Could not find recipient DID among our DIDs');
+    return null;
+
+  } catch (error) {
+    logger.error('Error finding recipient DID', {
+      error: error instanceof Error ? error.message : 'Unknown error',
+    });
+    return null;
+  }
+}
+
+// ============================================================================
+// EXISTING MESSAGE MANAGEMENT ROUTES
+// ============================================================================
 
 /**
  * Send message

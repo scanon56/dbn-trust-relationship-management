@@ -24,7 +24,7 @@ export const updateConnectionMetadataSchema = z.object({
 
 export const listConnectionsQuerySchema = z.object({
   myDid: z.string().optional(),
-  state: z.enum(['invited', 'requested', 'responded', 'active', 'completed', 'error']).optional(),
+  state: z.enum(['invited', 'requested', 'responded', 'complete', 'error']).optional(),
   protocols: z.string().optional(), // Comma-separated
   tags: z.string().optional(), // Comma-separated
   limit: z.coerce.number().int().min(1).max(100).optional().default(50),

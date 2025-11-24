@@ -200,10 +200,35 @@ export class Phase4Client {
         );
       }
 
-      const data = await response.json() as ApiResponse<DIDDocument>;
-      return data.data;
+        // The /document endpoint returns the DID Document directly (not wrapped)
+      const didDocument = await response.json() as DIDDocument;
+      
+      if (!didDocument || typeof didDocument !== 'object' || !didDocument.id) {
+        logger.error('Invalid DID Document structure', { 
+          did,
+          hasId: !!didDocument?.id,
+          receivedKeys: didDocument ? Object.keys(didDocument).slice(0, 10) : [],
+        });
+        throw new Phase4Error(
+          'Invalid DID Document structure',
+          'INVALID_DID_DOCUMENT',
+          { did }
+        );
+      }
+
+      logger.debug('DID Document fetched successfully', {
+        did,
+        hasService: !!didDocument.service,
+        serviceCount: didDocument.service?.length || 0,
+        hasVerificationMethod: !!didDocument.verificationMethod,
+      });
+
+      return didDocument;
     } catch (error) {
-      logger.error('Error fetching DID Document', { did, error: error instanceof Error ? error.message : 'Unknown error' });
+      logger.error('Error fetching DID Document', { 
+        did, 
+        error: error instanceof Error ? error.message : 'Unknown error' 
+      });
       throw error;
     }
   }

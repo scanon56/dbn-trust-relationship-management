@@ -11,27 +11,23 @@ describe('ConnectionStateMachine', () => {
       expect(ConnectionStateMachine.canTransition('requested', 'responded')).toBe(true);
     });
 
-    it('should allow responded -> active transition', () => {
-      expect(ConnectionStateMachine.canTransition('responded', 'active')).toBe(true);
+    it('should allow responded -> complete transition', () => {
+      expect(ConnectionStateMachine.canTransition('responded', 'complete')).toBe(true);
     });
 
-    it('should allow active -> completed transition', () => {
-      expect(ConnectionStateMachine.canTransition('active', 'completed')).toBe(true);
+    it('should not allow invited -> complete transition', () => {
+      expect(ConnectionStateMachine.canTransition('invited', 'complete')).toBe(false);
     });
 
-    it('should not allow invited -> active transition', () => {
-      expect(ConnectionStateMachine.canTransition('invited', 'active')).toBe(false);
-    });
-
-    it('should not allow completed -> any transition', () => {
-      expect(ConnectionStateMachine.canTransition('completed', 'active')).toBe(false);
+    it('should not allow complete -> any transition', () => {
+      expect(ConnectionStateMachine.canTransition('complete', 'responded')).toBe(false);
     });
 
     it('should allow any state -> error transition', () => {
       expect(ConnectionStateMachine.canTransition('invited', 'error')).toBe(true);
       expect(ConnectionStateMachine.canTransition('requested', 'error')).toBe(true);
       expect(ConnectionStateMachine.canTransition('responded', 'error')).toBe(true);
-      expect(ConnectionStateMachine.canTransition('active', 'error')).toBe(true);
+      expect(ConnectionStateMachine.canTransition('complete', 'error')).toBe(true);
     });
   });
 
@@ -44,7 +40,7 @@ describe('ConnectionStateMachine', () => {
 
     it('should throw for invalid transition', () => {
       expect(() => {
-        ConnectionStateMachine.validateTransition('invited', 'active');
+        ConnectionStateMachine.validateTransition('invited', 'complete');
       }).toThrow('Invalid state transition');
     });
   });
@@ -54,8 +50,8 @@ describe('ConnectionStateMachine', () => {
       expect(ConnectionStateMachine.getNextState('invited')).toBe('requested');
     });
 
-    it('should return null for completed', () => {
-      expect(ConnectionStateMachine.getNextState('completed')).toBeNull();
+    it('should return error for complete (optional recovery path)', () => {
+      expect(ConnectionStateMachine.getNextState('complete')).toBe('error');
     });
   });
 });
