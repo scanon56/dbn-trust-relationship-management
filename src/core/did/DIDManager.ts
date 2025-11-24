@@ -38,31 +38,27 @@ export class DIDManager {
       // Create did:peer with Phase 4 API
       const record = await phase4Client.createDID({
         method: 'peer',
-        options: {
-          services: [
+        serviceEndpoints: [
           {
-            id: '#didcomm',
+            id: 'didcomm',
             type: 'DIDCommMessaging',
             serviceEndpoint: config.didcomm.endpoint,
+            description: 'DIDComm endpoint',
           },
         ],
-          // Store connection metadata
-          metadata: {
-            connectionId,
-            baseDid,
-            purpose: 'connection',
-            createdAt: new Date().toISOString(),
-          },
+        metadata: {
+          connectionId,
+          baseDid,
+          purpose: 'connection',
+          createdAt: new Date().toISOString(),
         },
       });
 
       // Obtain DID Document either from creation response or via resolution
       let didDocument: DIDDocument;
       if ((record as any).didDocument) {
-        logger.info('Using DID Document from creation response', { did: record.did });
         didDocument = (record as any).didDocument;
       } else {
-        logger.debug('Resolving DID Document for new peer DID', { did: record.did });
         didDocument = await phase4Client.getDIDDocument(record.did);
       }
 
@@ -75,9 +71,6 @@ export class DIDManager {
 
       // Ensure DIDComm service exists (Phase 4 may omit services)
       if (!didDocument.service || didDocument.service.length === 0) {
-        logger.warn('Missing services in DID Document - constructing DIDComm service manually', {
-          did: record.did,
-        });
         didDocument.service = [
           {
             id: `${record.did}#didcomm`,

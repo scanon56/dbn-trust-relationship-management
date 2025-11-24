@@ -81,9 +81,14 @@ export interface DIDRecord {
 export interface CreateDIDRequest {
   method: 'web' | 'peer' | 'key';
   methodId?: string;
+  // Phase 4 DID creation supports top-level serviceEndpoints array (preferred over nested options.services)
+  serviceEndpoints?: ServiceEndpoint[];
+  // Arbitrary metadata stored with the DID record
+  metadata?: Record<string, any>;
+  // Additional options (legacy / method-specific fields)
   options?: {
     publicKey?: string;
-    serviceEndpoint?: string;
+    serviceEndpoint?: string; // single endpoint variant
     [key: string]: any;
   };
 }
