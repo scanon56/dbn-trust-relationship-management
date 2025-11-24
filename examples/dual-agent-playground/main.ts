@@ -65,9 +65,20 @@ async function api<T>(panel: 'a' | 'b', path: string, opts: RequestInit = {}): P
 }
 
 // Agent A actions
-function updateStatus(panel: 'a' | 'b', text: string) {
+function friendlyState(raw?: string): string {
+  switch (raw) {
+    case 'invited': return 'invited';
+    case 'requested': return 'requesting';
+    case 'responded': return 'responded';
+    case 'complete': return 'complete';
+    case 'error': return 'error';
+    default: return raw || 'unknown';
+  }
+}
+
+function updateStatus(panel: 'a' | 'b', rawState: string) {
   const panelEl = panel === 'a' ? document.querySelector('#agentA .status') : document.querySelector('#agentB .status');
-  if (panelEl) panelEl.textContent = (panel === 'a' ? 'A: ' : 'B: ') + text;
+  if (panelEl) panelEl.textContent = (panel === 'a' ? 'A: ' : 'B: ') + friendlyState(rawState);
 }
 
 function setTransportHealth(panel: 'a' | 'b', state: 'ok' | 'fail' | 'warn' | 'unknown', label?: string) {
@@ -120,7 +131,7 @@ async function pollConnection(panel: 'a' | 'b', id: string) {
       const data = await api<{ connection: Connection }>(panel, `/api/v1/connections/${id}`);
       const state = data.connection.state || 'unknown';
       updateStatus(panel, state);
-      if (state === 'active') {
+      if (state === 'complete') {
         clearInterval(timer);
         if (panel === 'a') {
           el<HTMLButtonElement>('aSendMessageBtn').disabled = false;
@@ -129,7 +140,7 @@ async function pollConnection(panel: 'a' | 'b', id: string) {
           el<HTMLButtonElement>('bSendMessageBtn').disabled = false;
           el<HTMLButtonElement>('bRefreshMessagesBtn').disabled = false;
         }
-        log(panel, 'Connection is active');
+        log(panel, 'Connection complete');
       }
     } catch (e: any) {
       if (attempts % 5 === 0) log(panel, 'Poll error: ' + e.message);
@@ -157,7 +168,8 @@ el<HTMLButtonElement>('aCreateInvitationBtn').addEventListener('click', async ()
     const { connection, invitationUrl } = data;
     el('aConnectionId').textContent = connection.id;
     el('aInvitationUrl').textContent = invitationUrl;
-    el<HTMLButtonElement>('aActivateBtn').disabled = false;
+    // Activation button deprecated (protocol now auto-completes via ack)
+    el<HTMLButtonElement>('aActivateBtn').disabled = true;
     el<HTMLInputElement>('bInvitationUrl').value = invitationUrl;
     log('a', 'Invitation created');
     updateStatus('a', connection.state || 'invited');
@@ -168,19 +180,7 @@ el<HTMLButtonElement>('aCreateInvitationBtn').addEventListener('click', async ()
   }
 });
 
-el<HTMLButtonElement>('aActivateBtn').addEventListener('click', async () => {
-  const id = el('aConnectionId').textContent.trim();
-  if (!id || id === '(none)') return;
-  try {
-    await api<void>('a', `/api/v1/connections/${id}/activate`, { method: 'POST' });
-    log('a', 'Connection activated');
-    el<HTMLButtonElement>('aSendMessageBtn').disabled = false;
-    el<HTMLButtonElement>('aRefreshMessagesBtn').disabled = false;
-  } catch (e: any) {
-    log('a', 'Activation failed: ' + e.message);
-    checkTransport('a');
-  }
-});
+// Manual activation removed: endpoint deprecated under Aries handshake flow
 
 el<HTMLButtonElement>('aSendMessageBtn').addEventListener('click', async () => {
   const id = el('aConnectionId').textContent.trim();
@@ -231,7 +231,7 @@ el<HTMLButtonElement>('bAcceptInvitationBtn').addEventListener('click', async ()
       { method: 'POST', body: JSON.stringify({ invitation, myDid, label }) },
     );
     el('bConnectionId').textContent = data.connection.id;
-    el<HTMLButtonElement>('bActivateBtn').disabled = false;
+    el<HTMLButtonElement>('bActivateBtn').disabled = true; // deprecated
     log('b', 'Invitation accepted');
     updateStatus('b', data.connection.state || 'requested');
     pollConnection('b', data.connection.id);
@@ -241,19 +241,7 @@ el<HTMLButtonElement>('bAcceptInvitationBtn').addEventListener('click', async ()
   }
 });
 
-el<HTMLButtonElement>('bActivateBtn').addEventListener('click', async () => {
-  const id = el('bConnectionId').textContent.trim();
-  if (!id || id === '(none)') return;
-  try {
-    await api<void>('b', `/api/v1/connections/${id}/activate`, { method: 'POST' });
-    el<HTMLButtonElement>('bSendMessageBtn').disabled = false;
-    el<HTMLButtonElement>('bRefreshMessagesBtn').disabled = false;
-    log('b', 'Connection activated');
-  } catch (e: any) {
-    log('b', 'Activation failed: ' + e.message);
-    checkTransport('b');
-  }
-});
+// Manual activation removed for Agent B as well
 
 el<HTMLButtonElement>('bSendMessageBtn').addEventListener('click', async () => {
   const id = el('bConnectionId').textContent.trim();
