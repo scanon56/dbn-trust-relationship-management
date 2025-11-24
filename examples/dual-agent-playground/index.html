@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dual Agent DIDComm Playground</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root { font-family: system-ui, sans-serif; color-scheme: light dark; }
+    body { margin: 0; padding: 1rem; background: #101418; color: #eaecef; }
+    h1 { margin-top: 0; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .panel { border: 1px solid #2d3748; border-radius: 8px; padding: 1rem; background:#1b232c; display:flex; flex-direction:column; gap:.75rem; }
+    fieldset { border:1px solid #394554; border-radius:6px; padding:.75rem; }
+    legend { padding:0 .5rem; font-weight:600; }
+    label { display:block; font-size:.8rem; margin:.25rem 0 .15rem; text-transform:uppercase; letter-spacing:.05em; }
+    input[type=text], textarea { width:100%; padding:.5rem; border:1px solid #344252; border-radius:4px; background:#11171d; color:#fff; font-family:inherit; }
+    textarea { min-height:60px; }
+    button { cursor:pointer; background:#2563eb; color:#fff; border:none; padding:.55rem .9rem; border-radius:4px; font-weight:600; font-size:.85rem; letter-spacing:.03em; }
+    button.secondary { background:#475569; }
+    button.danger { background:#dc2626; }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    .row { display:flex; gap:.5rem; flex-wrap:wrap; }
+    .small { font-size:.7rem; opacity:.8; }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; word-break: break-all; }
+    .status { font-size:.75rem; padding:.25rem .5rem; border-radius:4px; background:#243447; }
+    .health { padding:.1rem .4rem; border-radius:4px; }
+    .health.ok { background:#14532d; color:#4ade80; }
+    .health.fail { background:#4c0519; color:#f87171; }
+    .health.warn { background:#43380a; color:#facc15; }
+    .health.unknown { background:#243447; color:#94a3b8; }
+    .log { background:#0d1216; border:1px solid #243447; padding:.5rem; border-radius:6px; font-size:.7rem; max-height:160px; overflow:auto; white-space:pre-wrap; }
+    .flex { display:flex; }
+    .space-between { justify-content:space-between; align-items:center; }
+    .messages { font-size:.7rem; display:flex; flex-direction:column; gap:.35rem; }
+    .msg { padding:.35rem .5rem; border-radius:4px; background:#243447; }
+    .msg.outbound { border-left:3px solid #2563eb; }
+    .msg.inbound { border-left:3px solid #16a34a; }
+    .error { color:#f87171; }
+    .success { color:#4ade80; }
+    .divider { height:1px; background:#2d3748; margin:.5rem 0; }
+  </style>
+</head>
+<body>
+  <h1>DIDComm Dual-Agent Playground</h1>
+  <p>This lightweight UI simulates two agents (A & B) interacting with the Trust Relationship Management API running at <code>http://localhost:3001</code>. Use it to create/accept invitations, activate connections (temporary helper), and exchange BasicMessage DIDComm messages.</p>
+  <div class="grid">
+    <!-- Agent A Panel -->
+    <div class="panel" id="agentA">
+      <div class="flex space-between">
+        <h2 style="margin:0">Agent A</h2>
+        <span class="status" data-status>A: idle</span>
+      </div>
+      <fieldset>
+        <legend>Server</legend>
+        <label for="aApiBase">API Base URL</label>
+        <input id="aApiBase" type="text" placeholder="http://localhost:3001" value="http://localhost:3001" />
+        <div class="small mono" style="margin-top:.35rem">Transport: <span id="aTransportHealth" class="health unknown">unknown</span></div>
+      </fieldset>
+      <fieldset>
+        <legend>Identity</legend>
+        <label for="aDid">DID</label>
+        <input id="aDid" type="text" placeholder="did:web:example.com:alice" value="did:web:example.com:alice" />
+        <label for="aLabel">Label</label>
+        <input id="aLabel" type="text" placeholder="Alice Agent" value="Alice Agent" />
+        <label for="aGoal" >Goal (optional)</label>
+        <input id="aGoal" type="text" placeholder="Establish business connection" />
+        <label for="aTargetDid" >Target DID (optional)</label>
+        <input id="aTargetDid" type="text" placeholder="did:web:example.com:bob" />
+      </fieldset>
+      <div class="row">
+        <button id="aCreateInvitationBtn">Create Invitation</button>
+        <button id="aActivateBtn" class="secondary" disabled title="Fallback manual activation (not needed when handshake succeeds)">Activate</button>
+        <button id="aRefreshMessagesBtn" class="secondary" disabled>Refresh Messages</button>
+      </div>
+      <div>
+        <label>Connection ID</label>
+        <div class="mono small" id="aConnectionId">(none)</div>
+        <label>Invitation URL</label>
+        <div class="mono small" id="aInvitationUrl">(none)</div>
+      </div>
+      <fieldset>
+        <legend>Send Message</legend>
+        <label for="aMessage">Content</label>
+        <textarea id="aMessage" placeholder="Hello from Alice"></textarea>
+        <div class="row">
+          <button id="aSendMessageBtn" disabled>Send</button>
+        </div>
+      </fieldset>
+      <div class="divider"></div>
+      <div>
+        <strong>Messages</strong>
+        <div class="messages" id="aMessages"></div>
+      </div>
+      <div class="divider"></div>
+      <div class="log" id="aLog"></div>
+    </div>
+
+    <!-- Agent B Panel -->
+    <div class="panel" id="agentB">
+      <div class="flex space-between">
+        <h2 style="margin:0">Agent B</h2>
+        <span class="status" data-status>B: idle</span>
+      </div>
+      <fieldset>
+        <legend>Server</legend>
+        <label for="bApiBase">API Base URL</label>
+        <input id="bApiBase" type="text" placeholder="http://localhost:3002" value="http://localhost:3002" />
+        <div class="small mono" style="margin-top:.35rem">Transport: <span id="bTransportHealth" class="health unknown">unknown</span></div>
+      </fieldset>
+      <fieldset>
+        <legend>Identity</legend>
+        <label for="bDid">DID</label>
+        <input id="bDid" type="text" placeholder="did:web:example.com:bob" value="did:web:example.com:bob" />
+        <label for="bLabel">Label</label>
+        <input id="bLabel" type="text" placeholder="Bob Agent" value="Bob Agent" />
+        <label for="bInvitationUrl">Invitation URL (paste Agent A's)</label>
+        <input id="bInvitationUrl" type="text" placeholder="Paste invitation URL here" />
+      </fieldset>
+      <div class="row">
+        <button id="bAcceptInvitationBtn">Accept Invitation</button>
+        <button id="bActivateBtn" class="secondary" disabled>Activate</button>
+        <button id="bRefreshMessagesBtn" class="secondary" disabled>Refresh Messages</button>
+      </div>
+      <div>
+        <label>Connection ID</label>
+        <div class="mono small" id="bConnectionId">(none)</div>
+      </div>
+      <fieldset>
+        <legend>Send Message</legend>
+        <label for="bMessage">Content</label>
+        <textarea id="bMessage" placeholder="Hello from Bob"></textarea>
+        <div class="row">
+          <button id="bSendMessageBtn" disabled>Send</button>
+        </div>
+      </fieldset>
+      <div class="divider"></div>
+      <div>
+        <strong>Messages</strong>
+        <div class="messages" id="bMessages"></div>
+      </div>
+      <div class="divider"></div>
+      <div class="log" id="bLog"></div>
+    </div>
+  </div>
+
+  <script type="module" src="/main.ts"></script>
+</body>
+</html>

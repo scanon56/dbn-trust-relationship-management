@@ -79,7 +79,7 @@ jobs:
           path: coverage
 
       - name: Publish coverage badge (gh-badges branch)
-        if: success()
+        if: success() && github.event_name == 'push'
         run: |
           set -euo pipefail
           # Ensure coverage summary exists
@@ -114,4 +114,5 @@ jobs:
           cp -f badges/coverage.json badges/coverage.json
           git add badges/coverage.json
           git commit -m "chore(badge): update coverage [skip ci]" || echo "No badge changes"
-          git push origin gh-badges
+          # Push current HEAD to remote gh-badges branch (create if missing)
+          git push origin HEAD:refs/heads/gh-badges

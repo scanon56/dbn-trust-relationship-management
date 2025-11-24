@@ -6,6 +6,7 @@ export const createInvitationSchema = z.object({
   label: z.string().optional(),
   goalCode: z.string().optional(),
   goal: z.string().optional(),
+  targetDid: z.string().optional(),
 });
 
 export const acceptInvitationSchema = z.object({

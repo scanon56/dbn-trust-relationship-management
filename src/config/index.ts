@@ -1,7 +1,12 @@
 // src/config/index.ts
 import dotenv from 'dotenv';
 
-dotenv.config();
+// Load explicit path if provided, else default .env
+if (process.env.DOTENV_CONFIG_PATH) {
+  dotenv.config({ path: process.env.DOTENV_CONFIG_PATH });
+} else {
+  dotenv.config();
+}
 
 export const config = {
   port: parseInt(process.env.PORT || '3001', 10),

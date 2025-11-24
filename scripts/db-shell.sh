@@ -6,9 +6,9 @@ set -euo pipefail
 
 : "${DB_HOST:=localhost}"
 : "${DB_PORT:=5432}"
-: "${DB_NAME:=dbn_platform}"
-: "${DB_USER:=dbn_user}"
-: "${DB_PASSWORD:=dbn_password}" # For convenience; consider using a safer secret manager.
+: "${DB_NAME:=dbn_trust_management}"
+: "${DB_USER:=postgres}"
+: "${DB_PASSWORD:=postgres}" # For convenience; consider using a safer secret manager.
 
 export PGPASSWORD="$DB_PASSWORD"
 

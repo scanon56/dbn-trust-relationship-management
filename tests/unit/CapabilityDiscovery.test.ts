@@ -8,6 +8,8 @@ describe('CapabilityDiscovery', () => {
 
   test('discoverCapabilities extracts DIDComm endpoint and protocols', async () => {
     const didDocument = {
+      '@context': ['https://www.w3.org/ns/did/v1'],
+      id: 'did:example:alice',
       service: [
         {
           id: '#didcomm-1',
@@ -22,7 +24,7 @@ describe('CapabilityDiscovery', () => {
           protocols: ['https://didcomm.org/trust-ping/2.0']
         }
       ]
-    };
+    } as any;
     jest.spyOn(phase4Client, 'getDIDDocument').mockResolvedValue(didDocument);
 
     const caps = await capabilityDiscovery.discoverCapabilities('did:example:alice');
@@ -36,6 +38,8 @@ describe('CapabilityDiscovery', () => {
 
   test('discoverCapabilities with no DIDComm service yields undefined endpoint', async () => {
     const didDocument = {
+      '@context': ['https://www.w3.org/ns/did/v1'],
+      id: 'did:example:bob',
       service: [
         {
           id: '#not-didcomm',
@@ -44,7 +48,7 @@ describe('CapabilityDiscovery', () => {
           protocols: ['proto:custom/1.0']
         }
       ]
-    };
+    } as any;
     jest.spyOn(phase4Client, 'getDIDDocument').mockResolvedValue(didDocument);
 
     const caps = await capabilityDiscovery.discoverCapabilities('did:example:bob');
@@ -54,16 +58,18 @@ describe('CapabilityDiscovery', () => {
 
   test('supportsProtocol returns true when protocol present', async () => {
     jest.spyOn(phase4Client, 'getDIDDocument').mockResolvedValue({
+      '@context': ['https://www.w3.org/ns/did/v1'],
+      id: 'did:example:peer',
       service: [
         { id: '#svc', type: 'DIDCommMessaging', serviceEndpoint: 'https://x', protocols: ['p1','p2'] }
       ]
-    });
+    } as any);
     const result = await capabilityDiscovery.supportsProtocol('did:example:peer', 'p2');
     expect(result).toBe(true);
   });
 
   test('supportsProtocol returns false when protocol absent', async () => {
-    jest.spyOn(phase4Client, 'getDIDDocument').mockResolvedValue({ service: [] });
+    jest.spyOn(phase4Client, 'getDIDDocument').mockResolvedValue({ '@context': ['https://www.w3.org/ns/did/v1'], id: 'did:example:peer', service: [] } as any);
     const result = await capabilityDiscovery.supportsProtocol('did:example:peer', 'pX');
     expect(result).toBe(false);
   });

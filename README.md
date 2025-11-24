@@ -9,6 +9,14 @@ Phase 2 of the Decentralized Business Network Platform - DIDComm-based peer-to-p
 
 The Trust Relationship Management service provides:
 - **DIDComm Connection Protocol** - Establish secure peer-to-peer connections
+### Database Helper (Quick Start)
+```bash
+# From project root
+./scripts/db-helper.sh test          # Check DB connectivity
+./scripts/db-helper.sh connections   # List recent connections
+./scripts/db-helper.sh console       # Open psql (exit with \q)
+```
+Requires `psql` in PATH and `.env` at the project root. See `scripts/README.md` for more.
 - **Message Exchange** - Send and receive encrypted DIDComm messages
 - **Protocol Handling** - Extensible protocol handler system
 - **Capability Discovery** - Discover peer capabilities from DID Documents
@@ -23,6 +31,7 @@ The Trust Relationship Management service provides:
 - ✅ Message threading and search
 - ✅ Connection metadata and tagging
 - ✅ Failed message retry
+- ✅ Correlation IDs for invitation & handshake tracing (`dbn:cid`)
 
 ## Architecture
 ```
@@ -31,139 +40,8 @@ The Trust Relationship Management service provides:
 │                    (Port 3001)                      │
 │                                                     │
 │  ┌──────────────┐        ┌──────────────┐          │
-│  │  Connection  │        │   Message    │          │
-│  │  Manager     │        │   Router     │          │
-│  └──────┬───────┘        └──────┬───────┘          │
-│         │                       │                  │
 │         └───────────┬───────────┘                  │
-│                     │                              │
-│         ┌───────────▼───────────┐                  │
-│         │  Protocol Registry    │                  │
-│         │  - BasicMessage       │                  │
-│         │  - TrustPing          │                  │
-│         │  - Connection         │                  │
-│         └───────────────────────┘                  │
-│                                                     │
-│         ┌───────────────────────┐                  │
-│         │   PostgreSQL          │                  │
-│         └───────────────────────┘                  │
-└─────────────────┬───────────────────────────────────┘
-                  │
-        ┌─────────▼──────────┐
-        │  Phase 4 DID API   │
-        │  (Port 3000)       │
-        └────────────────────┘
 ```
-
-## Prerequisites
-
-- Node.js 20+
-- PostgreSQL 16+
-- Phase 4 DID Service running on port 3000
-
-## Installation
-```bash
-# Clone repository
-git clone <repository-url>
-cd dbn-trust-relationship-management
-
-# Install dependencies
-npm install
-
-# Copy environment template
-cp .env.example .env
-
-# Edit .env with your configuration
-nano .env
-
-# Run database migrations
-npm run migrate
-```
-
-### Using Docker Compose (Optional)
-```bash
-# Start Postgres + pgAdmin
-docker compose up -d postgres pgadmin
-
-# Copy environment template and keep the standard credentials
-cp .env.example .env
-# Ensure `.env` has:
-# DB_NAME=dbn_trust_management
-# DB_USER=postgres
-# DB_PASSWORD=postgres
-
-# Run migrations
-npm run migrate
-```
-
-### Testing
-```bash
-# Run all tests
-npm test
-
-# Run tests in watch mode
-npm run test:watch
-
-# Generate coverage report
-npm run test:coverage
-```
-
-### Database Management
-```bash
-# Run migrations
-npm run migrate
-
-# Reset database (drop all data)
-psql -U postgres -d dbn_trust_management -c "TRUNCATE TABLE messages, connections, protocol_capabilities CASCADE"
-```
-
-#### Helper Scripts
-```bash
-# Open interactive psql using env vars
-./scripts/db-shell.sh
-
-# Reset schema (DESTROYS DATA) then run migrations
-./scripts/db-reset.sh
-```
-
-#### Credential Sets
-This project uses a single, standardized database configuration for both local and Docker environments:
-
-- DB_NAME: `dbn_trust_management`
-- DB_USER: `postgres`
-- DB_PASSWORD: `postgres`
-
-Set these via `.env` (see `.env.example`). If your local PostgreSQL uses a different role or password, update the variables accordingly.
-
-## API Documentation
-
-Full API documentation is available via the OpenAPI specification at `/api/v1/docs` (when Swagger UI is integrated).
-
-### Key Endpoints
-
-**Connections:**
-- `POST /api/v1/connections/invitations` - Create invitation
-- `POST /api/v1/connections/accept-invitation` - Accept invitation
-- `GET /api/v1/connections` - List connections
-- `GET /api/v1/connections/:id` - Get connection
-- `PATCH /api/v1/connections/:id` - Update metadata
-- `DELETE /api/v1/connections/:id` - Delete connection
-- `POST /api/v1/connections/:id/ping` - Send trust ping
-
-**Messages:**
-- `POST /api/v1/messages` - Send message
-- `GET /api/v1/messages` - List messages
-- `GET /api/v1/messages/search` - Search messages
-- `GET /api/v1/messages/:id` - Get message
-- `GET /api/v1/messages/thread/:threadId` - Get thread
-- `POST /api/v1/messages/:id/retry` - Retry failed message
-
-**DIDComm Transport:**
-- `POST /didcomm?did={recipientDid}` - Receive encrypted DIDComm message
-
-## Example Flows
-
-### 1. Establish Connection
 
 **Alice creates invitation:**
 ```bash
@@ -174,9 +52,14 @@ curl -X POST http://localhost:3001/api/v1/connections/invitations \
     "label": "Alice Agent",
     "goal": "Establish business connection"
   }'
-```
-
-**Bob accepts invitation:**
+curl -X POST http://localhost:3001/api/v1/connections/invitations \
+  -H "Content-Type: application/json" \
+  -d '{
+    "myDid": "did:web:example.com:alice",
+    "label": "Alice Agent",
+    "targetDid": "did:web:example.com:bob",
+    "goal": "Private connection for Bob only"
+  }'
 ```bash
 curl -X POST http://localhost:3001/api/v1/connections/accept-invitation \
   -H "Content-Type: application/json" \
@@ -187,22 +70,42 @@ curl -X POST http://localhost:3001/api/v1/connections/accept-invitation \
   }'
 ```
 
-### 2. Send Message
+Accept targeted invitation (if you created one above):
 ```bash
-curl -X POST http://localhost:3001/api/v1/messages \
+curl -X POST http://localhost:3001/api/v1/connections/accept-invitation \
   -H "Content-Type: application/json" \
   -d '{
-    "connectionId": "<connection-id>",
-    "type": "https://didcomm.org/basicmessage/2.0/message",
-    "body": {
-      "content": "Hello Bob!"
-    }
+    "invitation": "<invitation-url>",
+    "myDid": "did:web:example.com:bob",
+    "label": "Bob Agent"
   }'
+
+### Correlation IDs (Tracing)
+Each invitation embeds a correlation ID (`dbn:cid`) used to link logs across creation, acceptance, and connection request dispatch.
+Query locally:
+```sql
+SELECT id, state, metadata->>'correlationId' AS correlation_id
+FROM connections
+WHERE state IN ('invited','requested','responded','active');
+```
+Filter structured logs (example):
+```bash
+grep 'correlationId' server.log | grep '<your-correlation-id>'
+```
+If an incoming invitation lacks `dbn:cid`, one is generated at acceptance.
+
+Decode an invitation URL or raw `_oob` value:
+```bash
+node scripts/decode-oob.js 'https://didcomm.org/oob?_oob=eyJAdHlwZSI6ICJodHRwczovL2RpZGNvbW0ub3JnL291dC1vZi1iYW5kLzIuMC9pbnZpdGF0aW9uIiwgImRibiJ...' 
+# or
+node scripts/decode-oob.js eyJAdHlwZSI6Imh0dHBzOi8vZGlkY29tbS5vcmcvb3V0LW9mLWJhbmQvMi4wL2ludml0YXRpb24iLCJAYWlkIjoiLi4uIn0
+```
+Outputs full invitation JSON plus correlation ID summary.
 ```
 
-### 3. Trust Ping
+### 2. Activate Connection (Dev Helper)
 ```bash
-curl -X POST http://localhost:3001/api/v1/connections/{connection-id}/ping
+curl -X POST http://localhost:3001/api/v1/connections/{connection-id}/activate
 ```
 
 ## Project Structure
@@ -228,8 +131,8 @@ dbn-trust-relationship-management/
 │   └── server.ts            # Express server
 ├── tests/
 │   ├── unit/               # Unit tests
-│   ├── integration/        # Integration tests
-│   └── helpers/            # Test helpers
+│   ├── helpers/            # Test helpers
+│   └── setup.ts            # Jest setup
 ├── docs/
 │   ├── architecture.md     # Architecture documentation
 │   └── protocols.md        # Protocol specifications
@@ -237,6 +140,42 @@ dbn-trust-relationship-management/
 ```
 
 ## Development
+
+### Dual-Instance (Separate Databases)
+For realistic two-agent testing run each server against its own database (same Postgres cluster, different DB names):
+
+```bash
+# 1. Create & migrate both databases
+./scripts/db-init-dual.sh  # creates dbn_trust_management_a / dbn_trust_management_b and runs migrations
+
+# 2. Start Agent A (port 3001)
+PORT=3001 DB_NAME=dbn_trust_management_a DIDCOMM_ENDPOINT=http://localhost:3001/didcomm npm run dev
+
+# 3. Start Agent B (port 3002)
+PORT=3002 DB_NAME=dbn_trust_management_b DIDCOMM_ENDPOINT=http://localhost:3002/didcomm npm run dev
+
+# 4. (Optional) Playground
+npm run playground:dev
+```
+
+Shortcut (all three concurrently):
+```bash
+npm run demo:dual:db
+```
+
+Migrate individually:
+```bash
+npm run migrate:agentA
+npm run migrate:agentB
+```
+
+Inspect each database:
+```bash
+DB_NAME=dbn_trust_management_a ./scripts/db-helper.sh connections
+DB_NAME=dbn_trust_management_b ./scripts/db-helper.sh connections
+```
+
+Connection rows are now isolated per agent: the inviter advances its single record through states without clashing with the invitee’s independent record.
 
 ### Adding a New Protocol Handler
 
@@ -298,6 +237,28 @@ If you see ECONNREFUSED during `npm run migrate`:
 - Confirm firewall or socket restrictions aren’t blocking TCP on 5432.
 - Ensure the database `DB_NAME` exists; create with `createdb` above.
 - Align credentials: either create the `postgres` role with a password, or set `DB_USER`/`DB_PASSWORD` to your local role.
+
+-- Check invitation metadata
+SELECT 
+  id,
+  my_did,
+  their_did,
+  state,
+  metadata->>'invitationType' as invitation_type,
+  metadata->>'targetDid' as target_did
+FROM connections
+WHERE state = 'invited';
+
+-- Check accepted connections
+SELECT 
+  id,
+  my_did,
+  their_did,
+  state,
+  metadata->>'wasTargeted' as was_targeted
+FROM connections
+WHERE state = 'requested';
+
 
 ### Phase 4 API Connection Issues
 ```bash
@@ -365,6 +326,7 @@ Reliability measures: sequential Jest (`--runInBand`), deterministic UUID mocks,
 
 ## Developer Notes
 - Enable test debug logs: `DEBUG_LOGS=1 npm test`.
+- Multi-DB Runs: Use `DB_NAME=...` prefixes or new dual-demo scripts. Avoid sharing one DB if you need realistic cross-agent handshake progression.
 - Add protocol: implement `supports()` + `handle()` then register in `initializeProtocols()`.
 - Consider WebSocket / queue transport abstraction around `sendToEndpoint`.
 - Potential next badge: generate coverage shield via CI using `lcov.info`.

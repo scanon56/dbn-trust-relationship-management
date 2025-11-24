@@ -91,6 +91,8 @@ Inviter (Alice)                    Invitee (Bob)
       |<-- 4. ACK (optional) ------------|
       |                                  |
       [Connection Active]
+
+Dual-DB Observation: With separate databases each agent stores a distinct connection record reflecting its role (inviter vs invitee). Progression of states is local to each DB; use the shared correlation ID (`dbn:cid`) embedded in the invitation to trace the end-to-end handshake across both instances.
 ```
 
 ### 2. Connection Protocol (1.0)
@@ -106,6 +108,13 @@ Inviter (Alice)                    Invitee (Bob)
 - **responded** - Response sent by inviter
 - **active** - Connection fully established
 - **completed** - Connection archived
+
+Dual-DB State Mapping:
+```
+Agent A (inviter DB): invited → requested → (response sent) → active
+Agent B (invitee DB): requested → responded → active
+```
+In a single shared database implementation you would typically maintain one row and update it through the unified sequence; for realism and isolation we use two DBs in local multi-instance testing.
 
 #### 2.1 Connection Request
 
@@ -123,6 +132,8 @@ Sent by invitee to inviter after receiving invitation.
     "goal": "Connect for business collaboration"
   }
 }
+
+Endpoint Integrity: The DID Document or service block included must advertise the invitee's DIDComm endpoint (e.g. port 3002 for Agent B). If it mistakenly advertises the inviter's endpoint, the response loops back and the invitee never progresses beyond `requested`.
 ```
 
 **Handler Action:**
@@ -146,6 +157,8 @@ Sent by inviter to invitee in response to request.
     "goal": "Connection accepted"
   }
 }
+
+Fast Activation: Current implementation transitions the invitee directly to `active` after processing the response; an optional ACK remains for compatibility with other ecosystems.
 ```
 
 **Handler Action:**
@@ -232,6 +245,8 @@ Messages can be threaded using `thid` field:
 - Notifications
 - System messages
 
+Activation Guard: Basic messages are only permitted once the connection state is `active`. Handshake messages (request/response/ack) are allowed in their transitional states.
+
 ### 4. Trust Ping Protocol (2.0)
 
 **Purpose:** Verify connection liveness and measure response time.
@@ -299,6 +314,8 @@ Alice                              Bob
   |   (timestamp: T2)               |
   |                                 |
   RTT = T2 - T1
+
+  Dual-DB Note: Trust ping is only meaningful after both agents independently reach `active`. Each database updates its own connection's `last_active_at` when processing ping/pong.
 ```
 
 ## Protocol Extension Guidelines

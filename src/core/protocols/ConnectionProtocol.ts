@@ -3,6 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 import { ProtocolHandler, MessageContext } from '../../types/protocol.types';
 import { DIDCommMessage } from '../../types/didcomm.types';
 import { connectionRepository } from '../connections/ConnectionRepository';
+import { messageRouter } from '../messages/MessageRouter';
+import { didManager } from '../did/DIDManager';
 import { messageRepository } from '../messages/MessageRepository';
 import { capabilityDiscovery } from '../discovery/CapabilityDiscovery';
 import { logger } from '../../utils/logger';
@@ -76,25 +78,77 @@ export class ConnectionProtocol implements ProtocolHandler {
     }
 
     // Discover their capabilities
+    // 1. Fast path: extract from DID Document carried in the request body
+    const requestDidDoc = (message.body as any)?.connection?.did_doc;
+    if (requestDidDoc && typeof requestDidDoc === 'object') {
+      try {
+        const endpointFast = didManager.extractServiceEndpoint(requestDidDoc);
+        const protocolsFast = didManager.extractProtocols(requestDidDoc);
+        const servicesFast = didManager.extractServices(requestDidDoc);
+        await connectionRepository.updateCapabilities(connection!.id, {
+          theirEndpoint: endpointFast || '',
+          theirProtocols: protocolsFast,
+          theirServices: servicesFast,
+        });
+        logger.info('Applied capabilities from request DID Document (fast path)', {
+          connectionId: connection!.id,
+          endpoint: endpointFast,
+          protocolCount: protocolsFast.length,
+        });
+      } catch (e) {
+        logger.warn('Failed to apply capabilities from request DID Document', { error: e instanceof Error ? e.message : e });
+      }
+    }
+
+    // 2. Discovery path (may refine or override if more authoritative)
     try {
       const capabilities = await capabilityDiscovery.discoverCapabilities(theirDid);
-      await connectionRepository.updateCapabilities(connection!.id, {
-        theirEndpoint: capabilities.endpoint,
-        theirProtocols: capabilities.protocols,
-        theirServices: capabilities.services,
-      });
+      if (capabilities.endpoint || capabilities.protocols.length || capabilities.services.length) {
+        await connectionRepository.updateCapabilities(connection!.id, {
+          theirEndpoint: capabilities.endpoint || '',
+          theirProtocols: capabilities.protocols,
+          theirServices: capabilities.services,
+        });
+        logger.info('Refined capabilities via discovery', {
+          connectionId: connection!.id,
+          endpoint: capabilities.endpoint,
+          protocolCount: capabilities.protocols.length,
+        });
+      }
     } catch (error) {
-      logger.warn('Failed to discover capabilities during connection request', {
+      logger.warn('Capability discovery failed; using fast path values if present', {
         theirDid,
-        error,
+        error: error instanceof Error ? error.message : 'Unknown error',
       });
     }
 
-    // TODO: Auto-respond with connection response
-    logger.info('Connection request processed', {
-      connectionId: connection!.id,
-      theirDid,
-    });
+    // Attempt auto-response if we have discovered their endpoint
+    const updated = await connectionRepository.findById(connection!.id);
+    if (updated?.theirEndpoint) {
+      try {
+        const myDidDoc = await didManager.getDIDDocument(myDid);
+        const responseMessage: DIDCommMessage = {
+          type: 'https://didcomm.org/connections/1.0/response',
+          id: uuidv4(),
+          thid: message.id,
+          from: myDid,
+          to: [theirDid],
+          created_time: Date.now(),
+          body: {
+            did: myDid,
+            did_doc: myDidDoc,
+            label: updated.theirLabel,
+          },
+        };
+
+        await messageRouter.routeOutbound(responseMessage, updated.id);
+        logger.info('Auto connection response sent', { connectionId: updated.id, to: theirDid });
+      } catch (error) {
+        logger.warn('Failed to auto-send connection response', { error });
+      }
+    }
+
+    logger.info('Connection request processed', { connectionId: connection!.id, theirDid });
   }
 
   /**
