@@ -29,13 +29,13 @@ describe('Protocol negative tests', () => {
 
   test('TrustPingProtocol handles unknown message type without throwing', async () => {
     const protocol = new TrustPingProtocol();
-    await expect(protocol.handle({ id: 'x', type: 'https://didcomm.org/trust-ping/2.0/unknown', body: {}, to: [], from: 'did:a' }, { connectionId: undefined, direction: 'inbound', transport: 'http', encrypted: true })).resolves.toBeUndefined();
+    await expect(protocol.handle({ id: 'x', type: 'https://didcomm.org/trust-ping/2.0/unknown', body: {}, to: [], from: 'did:a' }, { connectionId: undefined, direction: 'inbound', transport: 'http', encrypted: true, receivedAt: new Date() })).resolves.toBeUndefined();
   });
 
   test('ConnectionProtocol capabilities discovery failure path', async () => {
     const protocol = new ConnectionProtocol();
     const msg = { id: 'm1', type: 'https://didcomm.org/connections/1.0/request', body: { label: 'Peer' }, to: ['did:me'], from: 'did:them' };
-    await protocol.handle(msg as any, { connectionId: undefined, direction: 'inbound', transport: 'http', encrypted: true });
+    await protocol.handle(msg as any, { connectionId: undefined, direction: 'inbound', transport: 'http', encrypted: true, receivedAt: new Date() });
     // discovery failure triggers warn path but still creates connection
     expect(connectionRepository.create).toHaveBeenCalled();
   });
@@ -43,7 +43,7 @@ describe('Protocol negative tests', () => {
   test('ConnectionProtocol response with missing existing connection logs error branch', async () => {
     const protocol = new ConnectionProtocol();
     const msg = { id: 'm2', type: 'https://didcomm.org/connections/1.0/response', body: {}, to: ['did:me'], from: 'did:them' };
-    await protocol.handle(msg as any, { connectionId: undefined, direction: 'inbound', transport: 'http', encrypted: true });
+    await protocol.handle(msg as any, { connectionId: undefined, direction: 'inbound', transport: 'http', encrypted: true, receivedAt: new Date() });
     // findByDids returns null leading to error branch (no updateState calls for responded/active)
     expect(connectionRepository.findByDids).toHaveBeenCalled();
     expect(connectionRepository.updateState).not.toHaveBeenCalledWith(expect.any(String), 'responded');

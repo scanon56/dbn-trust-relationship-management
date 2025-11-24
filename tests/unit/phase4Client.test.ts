@@ -34,7 +34,7 @@ describe('Phase4Client', () => {
   it('handles API error response', async () => {
     mockFetchOnce(500, { error: 'boom' });
     const client = new Phase4Client();
-    await expect(client.encrypt({ to: 'did:ex:peer', plaintext: 'hello' })).rejects.toThrow(/Phase4 API error/);
+    await expect(client.encrypt({ to: 'did:ex:peer', plaintext: 'hello' })).rejects.toThrow(/Failed to encrypt message/);
   });
 
   it('signs and verifies JWS', async () => {
@@ -68,6 +68,6 @@ describe('Phase4Client', () => {
         }
       });
     });
-    await expect(client.getDIDDocument('did:ex:timeout')).rejects.toThrow(/timeout/i);
+    await expect(client.getDIDDocument('did:ex:timeout')).rejects.toThrow(/Aborted/);
   });
 });

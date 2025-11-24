@@ -4,7 +4,8 @@ export const openapiSpec = {
   info: {
     title: 'DBN Trust Relationship Management API',
     version: '1.0.0',
-    description: 'DIDComm-based peer-to-peer connection and message management for the Decentralized Business Network Platform.',
+    description:
+      'DIDComm-based peer-to-peer connection and message management for the Decentralized Business Network Platform.\n\nUse the Connections endpoints to create and accept invitations, then send messages over complete connections. For encrypted DIDComm traffic from remote agents, use the /didcomm transport endpoint with Content-Type application/didcomm-encrypted+json.',
     contact: {
       name: 'API Support',
       email: 'support@example.com',
@@ -13,6 +14,10 @@ export const openapiSpec = {
   servers: [
     {
       url: 'http://localhost:3001',
+      description: 'Local development server A',
+    },
+    {
+      url: 'http://localhost:3002',
       description: 'Local development server',
     },
     {
@@ -20,28 +25,41 @@ export const openapiSpec = {
       description: 'Production server',
     },
   ],
+  tags: [
+    {
+      name: 'Connections',
+      description:
+        'Manage DIDComm connections. Typical flow: 1) Create invitation, 2) Share the invitation URL, 3) Accept the invitation from the other agent (invited → requested), 4) Respond (requested → responded), 5) Acknowledge / confirm (responded → complete). In dual-instance local testing each agent may use a separate database (dbn_trust_management_a / dbn_trust_management_b) and sees only its own side of the handshake; use the correlationId (dbn:cid) to trace across both.',
+    },
+    {
+      name: 'Messages',
+      description:
+        'Exchange DIDComm messages over established connections. Provide a valid connectionId and a DIDComm message type (e.g., https://didcomm.org/basicmessage/2.0/message).',
+    },
+    {
+      name: 'DIDComm',
+      description:
+        'Transport endpoint for inbound encrypted DIDComm messages from peers. Clients must POST a JWE with Content-Type application/didcomm-encrypted+json and include the recipient DID as a query parameter.',
+    },
+    { name: 'Health', description: 'Service health and readiness probes.' },
+    { name: 'Events', description: 'Server-Sent Events (SSE) real-time streams.' },
+  ],
   components: {
     schemas: {
       Connection: {
         type: 'object',
+        description: 'Represents one side of a DIDComm connection. States advance independently per role.',
         properties: {
           id: { type: 'string', format: 'uuid' },
           myDid: { type: 'string', example: 'did:web:example.com:alice' },
           theirDid: { type: 'string', example: 'did:web:example.com:bob' },
           theirLabel: { type: 'string', example: 'Bob Agent' },
-          state: { 
-            type: 'string', 
-            enum: ['invited', 'requested', 'responded', 'active', 'completed', 'error'] 
-          },
+          state: { type: 'string', enum: ['invited', 'requested', 'responded', 'complete', 'error'] },
           role: { type: 'string', enum: ['inviter', 'invitee'] },
           theirEndpoint: { type: 'string', example: 'https://bob.example.com/didcomm' },
-          theirProtocols: { 
-            type: 'array', 
-            items: { type: 'string' },
-            example: ['https://didcomm.org/basicmessage/2.0', 'https://didcomm.org/trust-ping/2.0']
-          },
+          theirProtocols: { type: 'array', items: { type: 'string' } },
           theirServices: { type: 'array', items: { type: 'object' } },
-          invitation: { type: 'object' },
+          invitation: { $ref: '#/components/schemas/OutOfBandInvitation' },
           invitationUrl: { type: 'string' },
           tags: { type: 'array', items: { type: 'string' } },
           notes: { type: 'string' },
@@ -49,6 +67,7 @@ export const openapiSpec = {
           createdAt: { type: 'string', format: 'date-time' },
           updatedAt: { type: 'string', format: 'date-time' },
           lastActiveAt: { type: 'string', format: 'date-time' },
+          correlationId: { type: 'string' },
         },
       },
       Message: {
@@ -63,18 +82,36 @@ export const openapiSpec = {
           direction: { type: 'string', enum: ['inbound', 'outbound'] },
           fromDid: { type: 'string' },
           toDids: { type: 'array', items: { type: 'string' } },
-          body: { type: 'object' },
+          body: { 
+            type: 'object',
+            description: 'Protocol-specific payload. For BasicMessage 2.0 only the content string is used.',
+            properties: {
+              content: { type: 'string', example: 'Hello there!' }
+            },
+            required: ['content']
+          },
           attachments: { type: 'array', items: { type: 'object' } },
           state: { type: 'string', enum: ['pending', 'sent', 'delivered', 'failed', 'processed'] },
           errorMessage: { type: 'string' },
           retryCount: { type: 'integer' },
-          metadata: { type: 'object' },
+          metadata: { 
+            type: 'object',
+            description: 'Transport and protocol metadata. Includes created_time (epoch seconds), lang (if supplied), encryption flag, etc.',
+            properties: {
+              transport: { type: 'string' },
+              encrypted: { type: 'boolean' },
+              lang: { type: 'string', description: 'Language code (e.g., en)' },
+              created_time: { type: 'integer', description: 'Epoch seconds when message was created (DIDComm header)' },
+              attachments_out_of_scope: { type: 'boolean', description: 'True if attachments present (non-standard for basicmessage)' }
+            }
+          },
           createdAt: { type: 'string', format: 'date-time' },
           processedAt: { type: 'string', format: 'date-time' },
         },
       },
       OutOfBandInvitation: {
         type: 'object',
+        required: ['@type', '@id', 'services'],
         properties: {
           '@type': { type: 'string', example: 'https://didcomm.org/out-of-band/2.0/invitation' },
           '@id': { type: 'string' },
@@ -83,6 +120,8 @@ export const openapiSpec = {
           goal: { type: 'string' },
           accept: { type: 'array', items: { type: 'string' } },
           services: { type: 'array', items: { type: 'object' } },
+          'dbn:target': { type: 'string' },
+          'dbn:cid': { type: 'string' },
         },
       },
       ErrorResponse: {
@@ -101,6 +140,7 @@ export const openapiSpec = {
       },
     },
   },
+
   paths: {
     '/health': {
       get: {
@@ -143,14 +183,16 @@ export const openapiSpec = {
       post: {
         summary: 'Receive DIDComm message',
         tags: ['DIDComm'],
-        description: 'Transport endpoint for receiving encrypted DIDComm messages from peers',
+        description:
+          'Transport endpoint for receiving encrypted DIDComm messages from peers.\n\nSwagger tip: This operation expects Content-Type application/didcomm-encrypted+json and a raw JWE string in the request body. Most users will not call this manually; it is intended for agent-to-agent delivery.',
+        operationId: 'receiveDidcomm',
         parameters: [
           {
             name: 'did',
             in: 'query',
             required: true,
             schema: { type: 'string' },
-            description: 'Recipient DID',
+            description: 'Recipient DID for which this service is acting.',
           },
         ],
         requestBody: {
@@ -159,8 +201,9 @@ export const openapiSpec = {
             'application/didcomm-encrypted+json': {
               schema: {
                 type: 'string',
-                description: 'JWE encrypted DIDComm message',
+                description: 'Compact or JSON serialization JWE containing the DIDComm message.',
               },
+              example: 'eyJwcm90ZWN0ZWQiOiB0cnVlLCAiandlIjogIi4uLiJ9',
             },
           },
         },
@@ -194,6 +237,9 @@ export const openapiSpec = {
       post: {
         summary: 'Create out-of-band invitation',
         tags: ['Connections'],
+        description:
+          'Step 1: Create an invitation to start a new connection.\n\nIn Swagger: Click Try it out, set myDid to your DID, optionally set a label/goal, and Execute. Copy the invitationUrl and share it with the peer. The response also includes the invitation object.',
+        operationId: 'createInvitation',
         requestBody: {
           required: true,
           content: {
@@ -206,7 +252,36 @@ export const openapiSpec = {
                   label: { type: 'string', example: 'Alice Agent' },
                   goalCode: { type: 'string', example: 'establish-connection' },
                   goal: { type: 'string', example: 'To establish a secure connection' },
+                  targetDid: { 
+                    type: 'string', 
+                    example: 'did:web:example.com:bob',
+                    description: 'Optional: Restrict invitation to specific DID' 
                 },
+                },
+              },
+              examples: {
+                basic: {
+                  summary: 'Minimal',
+                  value: { myDid: 'did:web:example.com:alice' },
+                },
+                withLabel: {
+                  summary: 'With label and goal',
+                  value: {
+                    myDid: 'did:web:example.com:alice',
+                    label: 'Alice Agent',
+                    goalCode: 'establish-connection',
+                    goal: 'Establish business connection',
+                  },
+                },
+                targetedInvitation: {
+                  summary: 'Targeted invitation (only Bob can accept)',
+                  value: {
+                    myDid: 'did:web:example.com:alice',
+                    label: 'Alice Agent',
+                    targetDid: 'did:web:example.com:bob',
+                    goal: 'Private connection for Bob'
+                  }
+            }
               },
             },
           },
@@ -226,6 +301,7 @@ export const openapiSpec = {
                         connection: { $ref: '#/components/schemas/Connection' },
                         invitationUrl: { type: 'string' },
                         invitation: { $ref: '#/components/schemas/OutOfBandInvitation' },
+                        correlationId: { type: 'string', description: 'Tracing correlation ID for this invitation.' },
                       },
                     },
                   },
@@ -248,6 +324,9 @@ export const openapiSpec = {
       post: {
         summary: 'Accept out-of-band invitation',
         tags: ['Connections'],
+        description:
+          'Step 2: Accept an invitation received from a peer.\n\nIn Swagger: Paste the invitationUrl (oob=...) into the invitation field as a string, or paste the full invitation JSON. Set myDid to your DID and optionally a label. Execute to create a progressing connection (invited → requested). Subsequent protocol messages will advance it to responded then complete.',
+        operationId: 'acceptInvitation',
         requestBody: {
           required: true,
           content: {
@@ -266,6 +345,28 @@ export const openapiSpec = {
                   label: { type: 'string', example: 'Bob Agent' },
                 },
               },
+              examples: {
+                url: {
+                  summary: 'Using invitation URL',
+                  value: {
+                    invitation: 'https://example.com?oob=eyJAdHlwZSI6Imh0dHBzOi8vZGlkY29tbS5vcmcvb3V0LW9mLWJhbmQvMi4wL2ludml0YXRpb24iLC4uLn0',
+                    myDid: 'did:web:example.com:bob',
+                    label: 'Bob Agent',
+                  },
+                },
+                object: {
+                  summary: 'Using invitation object',
+                  value: {
+                    invitation: {
+                      '@type': 'https://didcomm.org/out-of-band/2.0/invitation',
+                      '@id': '1234',
+                      label: 'Alice Agent',
+                      services: ['did:web:example.com:alice'],
+                    },
+                    myDid: 'did:web:example.com:bob',
+                  },
+                },
+              },
             },
           },
         },
@@ -282,6 +383,7 @@ export const openapiSpec = {
                       type: 'object',
                       properties: {
                         connection: { $ref: '#/components/schemas/Connection' },
+                        correlationId: { type: 'string', description: 'Tracing correlation ID propagated from invitation.' },
                       },
                     },
                   },
@@ -304,6 +406,9 @@ export const openapiSpec = {
       get: {
         summary: 'List connections',
         tags: ['Connections'],
+        description:
+          'Browse and filter connections.\n\nTips: Use myDid to narrow to your DID. The protocols and tags parameters accept comma-separated lists (e.g., basicmessage,trust-ping). Pagination via limit and offset.',
+        operationId: 'listConnections',
         parameters: [
           { name: 'myDid', in: 'query', schema: { type: 'string' } },
           { 
@@ -311,7 +416,7 @@ export const openapiSpec = {
             in: 'query', 
             schema: { 
               type: 'string', 
-              enum: ['invited', 'requested', 'responded', 'active', 'completed', 'error'] 
+              enum: ['invited', 'requested', 'responded', 'complete', 'error'] 
             } 
           },
           { name: 'protocols', in: 'query', schema: { type: 'string' }, description: 'Comma-separated protocol IDs' },
@@ -352,6 +457,8 @@ export const openapiSpec = {
       get: {
         summary: 'Get connection by ID',
         tags: ['Connections'],
+        description: 'Fetch a single connection record by UUID.',
+        operationId: 'getConnection',
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
         ],
@@ -368,6 +475,7 @@ export const openapiSpec = {
                       type: 'object',
                       properties: {
                         connection: { $ref: '#/components/schemas/Connection' },
+                        correlationId: { type: 'string', description: 'Tracing correlation ID for this connection.' },
                       },
                     },
                   },
@@ -388,6 +496,8 @@ export const openapiSpec = {
       patch: {
         summary: 'Update connection metadata',
         tags: ['Connections'],
+        description: 'Partially update label, tags, notes, or custom metadata for a connection.',
+        operationId: 'updateConnection',
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
         ],
@@ -420,6 +530,7 @@ export const openapiSpec = {
                       type: 'object',
                       properties: {
                         connection: { $ref: '#/components/schemas/Connection' },
+                        correlationId: { type: 'string', description: 'Tracing correlation ID for this connection.' },
                       },
                     },
                   },
@@ -440,6 +551,8 @@ export const openapiSpec = {
       delete: {
         summary: 'Delete connection',
         tags: ['Connections'],
+        description: 'Permanently delete a connection. This does not delete messages.',
+        operationId: 'deleteConnection',
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
         ],
@@ -473,6 +586,8 @@ export const openapiSpec = {
       get: {
         summary: 'Get connection capabilities',
         tags: ['Connections'],
+        description: 'Return discovered protocols, DID services, and endpoint for the peer.',
+        operationId: 'getCapabilities',
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
         ],
@@ -491,6 +606,7 @@ export const openapiSpec = {
                         protocols: { type: 'array', items: { type: 'string' } },
                         services: { type: 'array', items: { type: 'object' } },
                         endpoint: { type: 'string' },
+                        correlationId: { type: 'string', description: 'Tracing correlation ID for this connection.' },
                       },
                     },
                   },
@@ -505,7 +621,8 @@ export const openapiSpec = {
       post: {
         summary: 'Refresh connection capabilities',
         tags: ['Connections'],
-        description: 'Re-discover capabilities from peer DID Document',
+        description: 'Re-discover capabilities from the peer DID Document and update the record.',
+        operationId: 'refreshCapabilities',
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
         ],
@@ -522,6 +639,7 @@ export const openapiSpec = {
                       type: 'object',
                       properties: {
                         connection: { $ref: '#/components/schemas/Connection' },
+                        correlationId: { type: 'string', description: 'Tracing correlation ID for this connection.' },
                       },
                     },
                   },
@@ -536,7 +654,8 @@ export const openapiSpec = {
       post: {
         summary: 'Send trust ping',
         tags: ['Connections'],
-        description: 'Check connection health and measure response time',
+        description: 'Check connection health and measure response time. Requires a complete connection.',
+        operationId: 'trustPing',
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
         ],
@@ -554,6 +673,7 @@ export const openapiSpec = {
                       properties: {
                         success: { type: 'boolean' },
                         responseTime: { type: 'number' },
+                        correlationId: { type: 'string', description: 'Tracing correlation ID for the pinged connection.' },
                       },
                     },
                   },
@@ -568,6 +688,9 @@ export const openapiSpec = {
       post: {
         summary: 'Send message',
         tags: ['Messages'],
+        description:
+          'Send a DIDComm message over an existing connection.\n\nBasicMessage 2.0 requires a body with a single content string (body.content). Optionally set threadId to continue a thread. The system auto-populates created_time and lang metadata from headers.',
+        operationId: 'sendMessage',
         requestBody: {
           required: true,
           content: {
@@ -581,6 +704,25 @@ export const openapiSpec = {
                   body: { type: 'object', example: { content: 'Hello!' } },
                   threadId: { type: 'string' },
                   parentId: { type: 'string', format: 'uuid' },
+                },
+              },
+              examples: {
+                basicMessage: {
+                  summary: 'BasicMessage (text)',
+                  value: {
+                    connectionId: '11111111-2222-3333-4444-555555555555',
+                    type: 'https://didcomm.org/basicmessage/2.0/message',
+                    body: { content: 'Hello Bob!' },
+                  },
+                },
+                threaded: {
+                  summary: 'Continue a thread',
+                  value: {
+                    connectionId: '11111111-2222-3333-4444-555555555555',
+                    type: 'https://didcomm.org/basicmessage/2.0/message',
+                    body: { content: 'Follow-up message' },
+                    threadId: 'abcd-thread-1234',
+                  },
                 },
               },
             },
@@ -611,6 +753,8 @@ export const openapiSpec = {
       get: {
         summary: 'List messages',
         tags: ['Messages'],
+        description: 'Browse messages with optional filters like connectionId, threadId, type, direction, and state.',
+        operationId: 'listMessages',
         parameters: [
           { name: 'connectionId', in: 'query', schema: { type: 'string', format: 'uuid' } },
           { name: 'threadId', in: 'query', schema: { type: 'string' } },
@@ -646,10 +790,68 @@ export const openapiSpec = {
         },
       },
     },
+    '/api/v1/basicmessages': {
+      post: {
+        summary: 'Send BasicMessage 2.0 (shortcut)',
+        tags: ['Messages'],
+        description: 'Convenience endpoint for BasicMessage: supply connectionId and content (optional lang, threadId). Server constructs DIDComm message with correct type and headers.',
+        operationId: 'sendBasicMessageShortcut',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['connectionId', 'content'],
+                properties: {
+                  connectionId: { type: 'string', format: 'uuid' },
+                  content: { type: 'string', example: 'Hello!' },
+                  lang: { type: 'string', example: 'en' },
+                  threadId: { type: 'string' }
+                }
+              },
+              examples: {
+                simple: {
+                  summary: 'Minimal',
+                  value: { connectionId: '11111111-2222-3333-4444-555555555555', content: 'Hello there!' }
+                },
+                withLang: {
+                  summary: 'With language',
+                  value: { connectionId: '11111111-2222-3333-4444-555555555555', content: 'Bonjour', lang: 'fr' }
+                }
+              }
+            }
+          }
+        },
+        responses: {
+          '201': {
+            description: 'Basic message sent',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        message: { $ref: '#/components/schemas/Message' }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     '/api/v1/messages/search': {
       get: {
         summary: 'Search messages',
         tags: ['Messages'],
+        description: 'Full-text search over message content and metadata. Provide a query string in q.',
+        operationId: 'searchMessages',
         parameters: [
           { name: 'q', in: 'query', required: true, schema: { type: 'string' }, description: 'Search query' },
           { name: 'connectionId', in: 'query', schema: { type: 'string', format: 'uuid' } },
@@ -687,6 +889,8 @@ export const openapiSpec = {
       get: {
         summary: 'Get message by ID',
         tags: ['Messages'],
+        description: 'Fetch a single message record by UUID.',
+        operationId: 'getMessage',
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
         ],
@@ -723,6 +927,8 @@ export const openapiSpec = {
       delete: {
         summary: 'Delete message',
         tags: ['Messages'],
+        description: 'Permanently delete a message record.',
+        operationId: 'deleteMessage',
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
         ],
@@ -748,6 +954,8 @@ export const openapiSpec = {
       get: {
         summary: 'Get messages in thread',
         tags: ['Messages'],
+        description: 'Return all messages associated with a DIDComm ~thread thid.',
+        operationId: 'getThread',
         parameters: [
           { name: 'threadId', in: 'path', required: true, schema: { type: 'string' } },
         ],
@@ -780,6 +988,8 @@ export const openapiSpec = {
       post: {
         summary: 'Retry failed message',
         tags: ['Messages'],
+        description: 'Retry delivery for a message in failed state. The system will attempt to resend and update state accordingly.',
+        operationId: 'retryMessage',
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
         ],
@@ -805,6 +1015,33 @@ export const openapiSpec = {
           },
         },
       },
+    },
+    '/api/v1/events/basicmessages': {
+      get: {
+        summary: 'Subscribe to live basic messages (SSE)',
+        tags: ['Events'],
+        description: 'Server-Sent Events stream emitting real-time BasicMessage deliveries as they are processed. Each event name is "basicmessage" and data includes messageId, connectionId, fromDid, content, lang, createdTime, encrypted, attachmentsCount.\n\nNotes: This is a unidirectional stream; reconnect on network failure. Filter client-side by connectionId if needed.',
+        operationId: 'subscribeBasicMessages',
+        responses: {
+          '200': {
+            description: 'Event stream established',
+            content: {
+              'text/event-stream': {
+                schema: {
+                  type: 'string',
+                  description: 'SSE stream. Each event formatted as:\n\n event: basicmessage\\n data: {"messageId":"...","connectionId":"...","content":"..."}\\n\\n'
+                },
+                examples: {
+                  sample: {
+                    summary: 'SSE event example',
+                    value: 'event: basicmessage\ndata: {"messageId":"abc-123","connectionId":"1111-2222","fromDid":"did:peer:xyz","content":"Hello","lang":"en","createdTime":1710000000,"encrypted":true,"attachmentsCount":0}\n\n'
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
     },
   },
 } as const;

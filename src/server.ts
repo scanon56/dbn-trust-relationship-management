@@ -18,8 +18,26 @@ import healthRoutes from './api/routes/health.routes';
 import didcommRoutes from './api/routes/didcomm.routes';
 import connectionsRoutes from './api/routes/connections.routes';
 import messagesRoutes from './api/routes/messages.routes';
+import eventsRoutes from './api/routes/events.routes';
+import basicMessagesRoutes from './api/routes/basicmessages.routes';
+
+// Add protocol handler registration at startup
+
+import { messageProcessor } from './core/messages/MessageProcessor';
+import { connectionProtocol } from './core/protocols/ConnectionProtocol';
+import { protocolRegistry } from './core/protocols/ProtocolRegistry';
 
 const app = express();
+
+// Register protocol handlers
+protocolRegistry.register(connectionProtocol);
+
+logger.info('Registered protocols', {
+  protocols: protocolRegistry.listProtocols(),
+});
+// Add more protocol handlers as needed
+// messageProcessor.registerProtocol('https://didcomm.org/basicmessage/2.0', basicMessageProtocol);
+// messageProcessor.registerProtocol('https://didcomm.org/trust-ping/2.0', trustPingProtocol);
 
 // Security middleware
 app.use(helmet());
@@ -45,6 +63,8 @@ app.use('/health', healthRoutes);
 app.use('/didcomm', didcommRoutes);
 app.use('/api/v1/connections', connectionsRoutes);
 app.use('/api/v1/messages', messagesRoutes);
+app.use('/api/v1/basicmessages', basicMessagesRoutes);
+app.use('/api/v1/events', eventsRoutes);
 
 app.use('/api-docs', swaggerRoutes);
 
@@ -62,31 +82,34 @@ app.use((req, res) => {
 // Error handling
 app.use(errorHandler);
 
-// Start server
-const server = app.listen(config.port, () => {
-  logger.info('Server started', {
-    port: config.port,
-    environment: config.nodeEnv,
-    didcommEndpoint: config.didcomm.endpoint,
-  });
-});
-
-// Graceful shutdown
-const shutdown = async () => {
-  logger.info('Shutdown signal received, closing server gracefully');
-
-  server.close(() => {
-    logger.info('HTTP server closed');
+// Start server (skip in tests to avoid open handle)
+let server: import('http').Server | undefined;
+if (config.nodeEnv !== 'test' && !process.env.JEST_WORKER_ID) {
+  server = app.listen(config.port, () => {
+    logger.info('Server started', {
+      port: config.port,
+      environment: config.nodeEnv,
+      didcommEndpoint: config.didcomm.endpoint,
+    });
   });
 
-  await closeDatabasePool();
-  logger.info('Database pool closed');
+  // Graceful shutdown
+  const shutdown = async () => {
+    logger.info('Shutdown signal received, closing server gracefully');
 
-  process.exit(0);
-};
+    server?.close(() => {
+      logger.info('HTTP server closed');
+    });
 
-process.on('SIGTERM', shutdown);
-process.on('SIGINT', shutdown);
+    await closeDatabasePool();
+    logger.info('Database pool closed');
+
+    process.exit(0);
+  };
+
+  process.on('SIGTERM', shutdown);
+  process.on('SIGINT', shutdown);
+}
 
 // Handle uncaught errors
 process.on('unhandledRejection', (reason, promise) => {

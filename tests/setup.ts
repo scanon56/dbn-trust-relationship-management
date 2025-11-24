@@ -14,7 +14,8 @@ jest.setTimeout(10000);
 process.env.NODE_ENV = 'test';
 process.env.DB_HOST = 'localhost';
 process.env.DB_PORT = '5432';
-process.env.DB_NAME = 'dbn_trust_management_test';
+// Use main dev database name to match docker-compose default
+process.env.DB_NAME = 'dbn_trust_management';
 process.env.DB_USER = 'postgres';
 process.env.DB_PASSWORD = 'postgres';
 process.env.PHASE4_API_URL = 'http://localhost:3000';

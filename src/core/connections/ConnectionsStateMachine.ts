@@ -6,10 +6,9 @@ export class ConnectionStateMachine {
   private static readonly validTransitions: Record<ConnectionState, ConnectionState[]> = {
     invited: ['requested', 'error'],
     requested: ['responded', 'error'],
-    responded: ['active', 'error'],
-    active: ['completed', 'error'],
-    completed: [],
-    error: ['invited', 'requested'], // Allow retry
+    responded: ['complete', 'error'],
+    complete: ['error'],
+    error: ['invited', 'requested'], // Allow retry from error
   };
 
   /**

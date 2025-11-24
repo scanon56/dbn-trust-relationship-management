@@ -1,4 +1,5 @@
 import request from 'supertest';
+process.env.SKIP_DELIVERY = 'true';
 jest.mock('uuid', () => { let c=0; return { v4: () => `uuid-test-${++c}` }; });
 jest.mock('../../src/infrastructure/clients/phase4Client', () => ({
   phase4Client: {
@@ -19,7 +20,7 @@ describe('Messages Routes', () => {
     const conn = await connectionRepository.create({
       myDid: 'did:example:sender',
       theirDid: 'did:example:receiver',
-      state: 'active',
+      state: 'complete',
       role: 'inviter',
       theirEndpoint: 'https://peer.endpoint/messages',
     });

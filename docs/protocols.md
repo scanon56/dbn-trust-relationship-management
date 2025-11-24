@@ -90,7 +90,9 @@ Inviter (Alice)                    Invitee (Bob)
       |                                  |
       |<-- 4. ACK (optional) ------------|
       |                                  |
-      [Connection Active]
+      [Connection Complete]
+
+Dual-DB Observation: With separate databases each agent stores a distinct connection record reflecting its role (inviter vs invitee). Progression of states is local to each DB; use the shared correlation ID (`dbn:cid`) embedded in the invitation to trace the end-to-end handshake across both instances.
 ```
 
 ### 2. Connection Protocol (1.0)
@@ -104,8 +106,14 @@ Inviter (Alice)                    Invitee (Bob)
 - **invited** - Invitation created by inviter
 - **requested** - Request sent by invitee
 - **responded** - Response sent by inviter
-- **active** - Connection fully established
-- **completed** - Connection archived
+- **complete** - Connection fully established
+
+Dual-DB State Mapping:
+```
+Agent A (inviter DB): invited → requested → (response sent) → complete
+Agent B (invitee DB): requested → responded → complete
+```
+In a single shared database implementation you would typically maintain one row and update it through the unified sequence; for realism and isolation we use two DBs in local multi-instance testing.
 
 #### 2.1 Connection Request
 
@@ -123,6 +131,8 @@ Sent by invitee to inviter after receiving invitation.
     "goal": "Connect for business collaboration"
   }
 }
+
+Endpoint Integrity: The DID Document or service block included must advertise the invitee's DIDComm endpoint (e.g. port 3002 for Agent B). If it mistakenly advertises the inviter's endpoint, the response loops back and the invitee never progresses beyond `requested`.
 ```
 
 **Handler Action:**
@@ -146,13 +156,15 @@ Sent by inviter to invitee in response to request.
     "goal": "Connection accepted"
   }
 }
+
+Auto-Completion: Current implementation transitions the invitee directly to `complete` after processing the response; an optional ACK remains for compatibility with ecosystems expecting ACK.
 ```
 
 **Handler Action:**
 1. Validate response
 2. Update connection state to `responded`
 3. Discover responder's capabilities
-4. Transition to `active` state
+4. Transition to `complete` state (auto-complete)
 5. Optionally send ACK
 
 #### 2.3 Connection ACK (Optional)
@@ -172,7 +184,7 @@ Optional acknowledgment of connection response.
 ```
 
 **Handler Action:**
-1. Confirm connection is `active`
+1. Confirm connection is `complete`
 2. Log acknowledgment
 
 ### 3. Basic Message Protocol (2.0)
@@ -232,6 +244,8 @@ Messages can be threaded using `thid` field:
 - Notifications
 - System messages
 
+Completion Guard: Basic messages are only permitted once the connection state is `complete`. Handshake messages (request/response/ack) are allowed in their transitional states.
+
 ### 4. Trust Ping Protocol (2.0)
 
 **Purpose:** Verify connection liveness and measure response time.
@@ -277,7 +291,7 @@ Messages can be threaded using `thid` field:
 
 **Handler Action:**
 1. Store response
-2. Update connection to `active`
+2. (No state change; connection must already be `complete`)
 3. Calculate round-trip time
 4. Emit success event
 
@@ -299,6 +313,8 @@ Alice                              Bob
   |   (timestamp: T2)               |
   |                                 |
   RTT = T2 - T1
+
+  Dual-DB Note: Trust ping is only meaningful after both agents independently reach `complete`. Each database updates its own connection's `last_active_at` when processing ping/pong.
 ```
 
 ## Protocol Extension Guidelines

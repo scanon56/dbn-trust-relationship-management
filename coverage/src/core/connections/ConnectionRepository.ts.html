@@ -30,9 +30,9 @@
         
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">67.64% </span>
+                <span class="strong">72.5% </span>
                 <span class="quiet">Branches</span>
-                <span class='fraction'>46/68</span>
+                <span class='fraction'>58/80</span>
             </div>
         
             
@@ -410,7 +410,25 @@
 <a name='L345'></a><a href='#L345'>345</a>
 <a name='L346'></a><a href='#L346'>346</a>
 <a name='L347'></a><a href='#L347'>347</a>
-<a name='L348'></a><a href='#L348'>348</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L348'></a><a href='#L348'>348</a>
+<a name='L349'></a><a href='#L349'>349</a>
+<a name='L350'></a><a href='#L350'>350</a>
+<a name='L351'></a><a href='#L351'>351</a>
+<a name='L352'></a><a href='#L352'>352</a>
+<a name='L353'></a><a href='#L353'>353</a>
+<a name='L354'></a><a href='#L354'>354</a>
+<a name='L355'></a><a href='#L355'>355</a>
+<a name='L356'></a><a href='#L356'>356</a>
+<a name='L357'></a><a href='#L357'>357</a>
+<a name='L358'></a><a href='#L358'>358</a>
+<a name='L359'></a><a href='#L359'>359</a>
+<a name='L360'></a><a href='#L360'>360</a>
+<a name='L361'></a><a href='#L361'>361</a>
+<a name='L362'></a><a href='#L362'>362</a>
+<a name='L363'></a><a href='#L363'>363</a>
+<a name='L364'></a><a href='#L364'>364</a>
+<a name='L365'></a><a href='#L365'>365</a>
+<a name='L366'></a><a href='#L366'>366</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">9x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">9x</span>
@@ -735,6 +753,24 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">104x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -759,7 +795,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">9x</span></td><td class="text"><pre class="prettyprint lang-js">// src/core/connections/ConnectionRepository.ts
 import { pool } from '../../infrastructure/database/pool';
-import { Connection, ConnectionState } from '../../types/connection.types';
+import { Connection, ConnectionState, OutOfBandInvitation, ServiceEndpoint } from '../../types/connection.types';
 import { logger } from '../../utils/logger';
 import { ConnectionError } from '../../utils/errors';
 &nbsp;
@@ -775,7 +811,7 @@ export class ConnectionRepository {
     state: ConnectionState;
     role: 'inviter' | 'invitee';
     theirEndpoint?: string;
-    invitation?: any;
+    invitation?: string | OutOfBandInvitation | null;
     invitationUrl?: string;
     metadata?: Record&lt;string, unknown&gt;;
   }): Promise&lt;Connection&gt; {
@@ -862,7 +898,7 @@ export class ConnectionRepository {
     offset?: number;
   }): Promise&lt;{ connections: Connection[]; total: number }&gt; {
     const conditions: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
     let paramCount = 0;
 &nbsp;
     <span class="missing-if-branch" title="if path not taken" >I</span>if (filters.myDid) {
@@ -959,10 +995,10 @@ export class ConnectionRepository {
   async updateCapabilities(id: string, data: {
     theirEndpoint?: string;
     theirProtocols?: string[];
-    theirServices?: any[];
+    theirServices?: ServiceEndpoint[];
   }): Promise&lt;Connection&gt; {
     const updates: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
     let paramCount = 0;
 &nbsp;
     <span class="missing-if-branch" title="else path not taken" >E</span>if (data.theirEndpoint !== undefined) {
@@ -1017,7 +1053,7 @@ export class ConnectionRepository {
     metadata?: Record&lt;string, unknown&gt;;
   }): Promise&lt;Connection&gt; {
     const updates: string[] = [];
-    const values: any[] = [];
+    const values: unknown[] = [];
     let paramCount = 0;
 &nbsp;
     <span class="missing-if-branch" title="else path not taken" >E</span>if (data.theirLabel !== undefined) {
@@ -1081,25 +1117,43 @@ export class ConnectionRepository {
   /**
    * Map database row to Connection object
    */
-  private mapRowToConnection(row: any): Connection {
+  private mapRowToConnection(row: {
+    id: string;
+    my_did: string;
+    their_did: string;
+    their_label?: string | null;
+    state: ConnectionState;
+    role: 'inviter' | 'invitee';
+    their_endpoint?: string | null;
+    their_protocols?: string[] | null;
+    their_services?: ServiceEndpoint[] | null;
+    invitation?: string | OutOfBandInvitation | null;
+    invitation_url?: string | null;
+    tags?: string[] | null;
+    notes?: string | null;
+    metadata?: Record&lt;string, unknown&gt; | null;
+    created_at: Date;
+    updated_at: Date;
+    last_active_at?: Date | null;
+  }): Connection {
     return {
       id: row.id,
       myDid: row.my_did,
       theirDid: row.their_did,
-      theirLabel: row.their_label,
+      theirLabel: row.their_label ?? undefined,
       state: row.state,
       role: row.role,
-      theirEndpoint: row.their_endpoint,
+      theirEndpoint: row.their_endpoint ?? undefined,
       theirProtocols: row.their_protocols || <span class="branch-1 cbranch-no" title="branch not covered" >[],</span>
       theirServices: row.their_services || <span class="branch-1 cbranch-no" title="branch not covered" >[],</span>
-      invitation: row.invitation,
-      invitationUrl: row.invitation_url,
+      invitation: (row.invitation ?? undefined) as OutOfBandInvitation | undefined,
+      invitationUrl: row.invitation_url ?? undefined,
       tags: row.tags || <span class="branch-1 cbranch-no" title="branch not covered" >[],</span>
-      notes: row.notes,
+      notes: row.notes ?? undefined,
       metadata: row.metadata || <span class="branch-1 cbranch-no" title="branch not covered" >{},</span>
       createdAt: row.created_at,
       updatedAt: row.updated_at,
-      lastActiveAt: row.last_active_at,
+      lastActiveAt: row.last_active_at ?? undefined,
     };
   }
 }
@@ -1111,7 +1165,7 @@ export const connectionRepository = new ConnectionRepository();</pre></td></tr><
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-11-17T17:18:26.165Z
+                at 2025-11-18T14:55:23.025Z
             </div>
         <script src="../../../prettify.js"></script>
         <script>

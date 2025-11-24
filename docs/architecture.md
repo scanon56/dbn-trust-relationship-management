@@ -60,6 +60,36 @@ The DBN Trust Relationship Management service (Phase 2) is a core component of t
 │  │  └──────────┘  └──────────┘  └──────────────────┘   │  │
 │  └──────────────────────────────────────────────────────┘  │
 └─────────┬──────────────────────────────────────────────────┘
+## Recent Additions
+
+### Basic Message Shortcut Endpoint (`POST /api/v1/basicmessages`)
+Provides a minimal interface for sending DIDComm BasicMessage 2.0 payloads. Instead of crafting full message structures, clients submit `connectionId`, `content`, optional `lang`, and optional `threadId`. The endpoint uses `buildBasicMessage()` to enforce protocol shape, then delegates to `messageService.sendMessage()`. Added to OpenAPI for easier client generation.
+
+### Server-Sent Events (SSE) Stream (`GET /api/v1/events/basicmessages`)
+Real-time push channel delivering inbound basic messages as they are processed. Implements periodic heartbeat comments to keep connections alive. Built on a lightweight typed `EventBus` emitting `BASIC_MESSAGE_RECEIVED` events. Future streams (e.g., connection state transitions) can reuse this pattern.
+
+### Typed Event Bus
+Central publisher/subscriber abstraction with explicit TypeScript payload types. Decouples protocol handlers from delivery mechanisms (SSE, future WebSockets, audits). Current usage: emitting basic message receive events; extensible for capability discovery refresh or connection lifecycle events.
+
+### Test Delivery Optimization Flag (`SKIP_DELIVERY`)
+When set to `true`, outbound routing bypasses encryption + HTTP transport. Messages transition from `pending` to `sent` immediately, reducing flakiness and runtime in API route tests. Unit tests for `MessageRouter` omit the flag to preserve crypto and error path coverage. Never enable in production or integration environments (would yield false delivery positives).
+
+Activation:
+```bash
+SKIP_DELIVERY=true npm test
+```
+Or set at top of specific API test files before importing `server`.
+
+### Enhanced BasicMessage Protocol (2.0)
+Added validation (content, timestamp, language), metadata extraction, event emission, and outbound builder. Aligns with DIDComm 2.0 spec semantics and surfaces real-time events via SSE.
+
+### Aries-Aligned Connection States
+Refactored legacy state model to Aries RFC 0160 handshake states (`invited`, `requested`, `responded`, `complete`, `error`). Legacy `active` / `completed` rows are normalized to `complete`. Auto-completion logic finalizes the invitee side without a separate activation step.
+
+### OpenAPI Spec Updates
+Includes new BasicMessage shortcut path, SSE events path under `Events` tag, refined message schema (body + metadata fields), and explicit examples supporting client scaffolding.
+
+---
           │
           ▼
 ┌────────────────────────────────────────────────────────────┐
@@ -79,6 +109,23 @@ The DBN Trust Relationship Management service (Phase 2) is a core component of t
           │  - messages                         │
           │  - protocol_capabilities            │
           └─────────────────────────────────────┘
+
+### Dual-Instance Variant (Realistic Testing)
+In multi-agent local testing each server can point to its own database for isolation of connection records:
+```
+Agent A  (PORT=3001, DB_NAME=dbn_trust_management_a)
+Agent B  (PORT=3002, DB_NAME=dbn_trust_management_b)
+```
+This prevents creation of mirrored (invitee/inviter) rows inside a single shared DB and makes handshake observation clearer: each agent advances its own record through states without interference.
+
+Scripts provided:
+```
+./scripts/db-init-dual.sh      # Creates & migrates _a and _b databases
+npm run dev:agentA             # Starts server on 3001 using DB A
+npm run dev:agentB             # Starts server on 3002 using DB B
+npm run demo:dual:db           # Concurrent A + B + playground
+```
+The playground must configure distinct `API Base URL` values per panel (3001 vs 3002) and each instance must set a proper `DIDCOMM_ENDPOINT` matching its own port (e.g. `http://localhost:3002/didcomm` for Agent B). If an agent mistakenly advertises the other agent's endpoint the handshake stalls (responses loop back locally).
 ```
 
 ## Core Components
@@ -96,10 +143,22 @@ The DBN Trust Relationship Management service (Phase 2) is a core component of t
 
 **State Machine:**
 ```
-invited → requested → responded → active → completed
-           ↓           ↓          ↓
-         error       error      error
+invited → requested → responded → complete
+                     ↓           ↓          ↓
+                 error       error      error
 ```
+
+**Handshake Flow (Protocol-Driven):**
+1. Invitation Creation (inviter): `createInvitation()` stores connection in `invited` with peer DID.
+    - Correlation ID (`dbn:cid`) generated and embedded for lifecycle tracing (also stored as `connection.metadata.correlationId`).
+2. Invitation Acceptance (invitee): `acceptInvitation()` creates invitee peer DID, resolves inviter DID Document, stores connection in `requested`, sends DIDComm `connections/1.0/request` message while propagating the same correlation ID (or generating one if absent).
+3. Request Processing (inviter): `ConnectionProtocol.handleRequest()` sets state `requested`, discovers capabilities, auto-sends DIDComm `connections/1.0/response`.
+4. Response Processing (invitee): `ConnectionProtocol.handleResponse()` updates to `responded` then `complete` after capability discovery / auto-complete.
+5. (Optional) Ack: `connections/1.0/ack` may be exchanged; there is no distinct `active` state in the persisted model.
+
+Dual-DB Note: In separate databases there is one connection row per agent. The inviter's row progresses `invited → requested`; the invitee's row progresses `requested → responded → complete`. Each side observes only its own row; correlation IDs (`dbn:cid`) allow cross-database log tracing.
+
+The previous helper `activateConnection(id)` remains for backward compatibility and test convenience but is deprecated; production flows should rely on the protocol message exchange above.
 
 **Dependencies:**
 - Connection Repository (data persistence)
@@ -130,6 +189,16 @@ Store Message
 - Handler lookup and dispatch
 - Error handling and retry logic
 - Message state management
+ - Optional SKIP_DELIVERY fast-path (tests only)
+**SKIP_DELIVERY Fast-Path Flow:**
+```
+sendMessage()
+    → Persist outbound message (pending)
+    → Check flag (SKIP_DELIVERY=true?)
+            → Yes: mark sent, skip encrypt + POST
+            → No: encrypt via Phase 4, POST to peer endpoint, update state
+```
+Ensures performance isolation in route-level tests while leaving full logic intact elsewhere.
 
 ### 3. Protocol Registry
 
@@ -139,6 +208,15 @@ Store Message
 - **BasicMessage (2.0):** Simple text messaging
 - **TrustPing (2.0):** Connection health checks
 - **Connection (1.0):** Connection establishment
+
+**Connection Protocol Handshake Logic:**
+| Message | Sender Role | Required State (Outbound) | Receiver State Transition |
+|---------|-------------|---------------------------|---------------------------|
+| `connections/1.0/request` | Invitee | `requested` | Inviter: `invited` → `requested` |
+| `connections/1.0/response` | Inviter | `requested` | Invitee: `requested` → `responded` → `complete` |
+| `connections/1.0/ack` (optional) | Invitee | `responded` | Inviter: (if not complete) → `complete` |
+
+Outbound state validation now allows request/response/ack in handshake states while restricting all other protocol messages (e.g. basicmessage, trust-ping) to `complete` connections to preserve integrity.
 
 **Extension Pattern:**
 ```typescript
@@ -189,7 +267,7 @@ Route to Protocol Handler
 Return 202 Accepted
 ```
 
-**Outbound Flow (TODO - Step 10):**
+**Outbound Flow:**
 ```
 Application calls sendMessage()
     ↓
@@ -200,6 +278,8 @@ Encrypt via Phase 4 API
 HTTP POST to peer endpoint
     ↓
 Handle response/errors
+    ↓
+Emit events (e.g., BASIC_MESSAGE_RECEIVED for inbound processing) → SSE push
 ```
 
 ## Data Model
@@ -211,7 +291,7 @@ CREATE TABLE connections (
   my_did TEXT NOT NULL,
   their_did TEXT NOT NULL,
   their_label TEXT,
-  state TEXT NOT NULL,  -- invited, requested, responded, active, completed, error
+    state TEXT NOT NULL,  -- invited, requested, responded, complete, error
   role TEXT NOT NULL,   -- inviter, invitee
   their_endpoint TEXT,
   their_protocols JSONB,
@@ -334,7 +414,7 @@ CREATE TABLE protocol_capabilities (
 - Connection invitations use cryptographically secure random IDs
 
 ### Authorization
-- Only active connections can exchange messages
+ - Only complete connections can exchange messages
 - State machine prevents invalid state transitions
 - Connection metadata is isolated per connection
 
@@ -375,6 +455,12 @@ CREATE TABLE protocol_capabilities (
   - Protocol handler invocations
   - Phase 4 API calls
   - Errors and exceptions
+    - Correlation tracing (`correlationId` attached to invitation/accept/request logs)
+
+**Correlation IDs**
+- Generated during invitation creation and stored as `invitation['dbn:cid']` & `connection.metadata.correlationId`.
+- Propagated through acceptance and connection request send for end-to-end log filtering.
+- If an external invitation lacks `dbn:cid`, acceptance generates one to preserve traceability.
 
 ### Metrics (TODO)
 - Connection count (by state)
@@ -410,11 +496,21 @@ PHASE4_TIMEOUT=30000
 
 # DIDComm
 DIDCOMM_ENDPOINT=http://localhost:3001/didcomm
+### Multi-Instance Environment Example
+```bash
+# Agent A
+PORT=3001 DB_NAME=dbn_trust_management_a DIDCOMM_ENDPOINT=http://localhost:3001/didcomm
+
+# Agent B
+PORT=3002 DB_NAME=dbn_trust_management_b DIDCOMM_ENDPOINT=http://localhost:3002/didcomm
+```
+Ensure you run `./scripts/db-init-dual.sh` to create & migrate both databases before starting.
 DEFAULT_DID=did:web:localhost:alice
 
 # Logging
 LOG_LEVEL=info|debug|warn|error
 LOG_FORMAT=json|simple
+SKIP_DELIVERY=false            # Set true only for tests to skip outbound encryption/transport
 ```
 
 ## Development Workflow

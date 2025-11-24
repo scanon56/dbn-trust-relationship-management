@@ -12,7 +12,7 @@ A complete DIDComm-based trust relationship management service that enables secu
 #### 1. Connection Management
 
 - Out-of-band invitation creation and acceptance 
-- Connection lifecycle state machine (invited → requested → responded → active → completed)
+- Connection lifecycle state machine (invited → requested → responded → complete)
 - Connection metadata management (tags, notes, custom fields)
 - Capability discovery from peer DID Documents
 

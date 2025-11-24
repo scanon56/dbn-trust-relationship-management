@@ -1,10 +1,13 @@
 // src/types/connection.types.ts
+// Standard Aries Connection Protocol states (RFC 0160):
+// invited -> requested -> responded -> complete
+// 'error' retained for internal error handling.
+// Backward compatibility: legacy 'active'/'completed' will be mapped to 'complete' when read.
 export type ConnectionState = 
-  | 'invited' 
-  | 'requested' 
-  | 'responded' 
-  | 'active' 
-  | 'completed'
+  | 'invited'
+  | 'requested'
+  | 'responded'
+  | 'complete'
   | 'error';
 
 export type ConnectionRole = 'inviter' | 'invitee';
@@ -44,6 +47,9 @@ export interface OutOfBandInvitation {
   goal?: string;
   accept?: string[];
   services: Array<string | ServiceEndpoint>;
+  'dbn:target'?: string;
+  // Correlation identifier used to tie logs across invitation lifecycle
+  'dbn:cid'?: string;
 }
 
 export interface CreateInvitationParams {
@@ -51,6 +57,7 @@ export interface CreateInvitationParams {
   label?: string;
   goalCode?: string;
   goal?: string;
+  targetDid?: string;
 }
 
 export interface AcceptInvitationParams {

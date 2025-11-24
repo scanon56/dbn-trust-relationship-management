@@ -82,7 +82,7 @@ describe('ConnectionRepository Integration Tests', () => {
       await connectionRepository.create({
         myDid: 'did:web:example.com:alice',
         theirDid: 'did:web:example.com:bob',
-        state: 'active',
+        state: 'complete',
         role: 'inviter',
       });
 
@@ -101,9 +101,9 @@ describe('ConnectionRepository Integration Tests', () => {
     });
 
     it('should filter by state', async () => {
-      const result = await connectionRepository.list({ state: 'active' });
+      const result = await connectionRepository.list({ state: 'complete' });
       expect(result.connections).toHaveLength(1);
-      expect(result.connections[0].state).toBe('active');
+      expect(result.connections[0].state).toBe('complete');
     });
 
     it('should paginate results', async () => {

@@ -8,7 +8,13 @@ import { protocolRegistry } from '../protocols/ProtocolRegistry';
 import { phase4Client } from '../../infrastructure/clients/phase4Client';
 import { logger } from '../../utils/logger';
 import { MessageError } from '../../utils/errors';
-
+/**
+ * Message Router
+ * 
+ * Routes DIDComm messages:
+ * - Outbound: Encrypts and sends to peer endpoints via HTTP
+ * - Inbound: Handled by MessageProcessor (separate module)
+ */
 export class MessageRouter {
 
   /**
@@ -46,6 +52,7 @@ export class MessageRouter {
       // Create message context
       const context: MessageContext = {
         connectionId,
+        receivedAt: new Date(),
         direction: 'inbound',
         transport: 'http',
         encrypted: true,
@@ -79,9 +86,11 @@ export class MessageRouter {
     connectionId: string
   ): Promise<void> {
     logger.info('Routing outbound message', {
+      connectionId,
       messageId: message.id,
       type: message.type,
-      connectionId,
+      from: message.from,
+      to: message.to, 
     });
 
     try {
@@ -93,9 +102,38 @@ export class MessageRouter {
         });
       }
 
-      if (connection.state !== 'active') {
+      // Allow a connection request message during handshake 'requested' state.
+      const isConnectionRequest = message.type === 'https://didcomm.org/connections/1.0/request';
+      const isConnectionResponse = message.type === 'https://didcomm.org/connections/1.0/response';
+      const isConnectionAck = message.type === 'https://didcomm.org/connections/1.0/ack';
+
+      if (isConnectionRequest) {
+        if (connection.state !== 'requested') {
+          throw new MessageError(
+            'Connection request can only be sent in requested state',
+            'CONNECTION_REQUEST_INVALID_STATE',
+            { connectionId, state: connection.state }
+          );
+        }
+      } else if (isConnectionResponse) {
+        if (connection.state !== 'requested') {
+          throw new MessageError(
+            'Connection response can only be sent while requested',
+            'CONNECTION_RESPONSE_INVALID_STATE',
+            { connectionId, state: connection.state }
+          );
+        }
+      } else if (isConnectionAck) {
+        if (connection.state !== 'responded') {
+          throw new MessageError(
+            'Connection ack requires responded state',
+            'CONNECTION_ACK_INVALID_STATE',
+            { connectionId, state: connection.state }
+          );
+        }
+      } else if (connection.state !== 'complete') {
         throw new MessageError(
-          'Connection is not active',
+          'Connection is not complete',
           'CONNECTION_NOT_ACTIVE',
           { connectionId, state: connection.state }
         );
@@ -126,21 +164,37 @@ export class MessageRouter {
         });
       }
 
+      // Optional shortcut for tests: set SKIP_DELIVERY=true to bypass encryption + transport
+      if (process.env.SKIP_DELIVERY === 'true') {
+        await messageRepository.updateState(storedMessage.id, 'sent');
+        logger.debug('Test shortcut: skipped encryption and delivery', { connectionId, messageId: message.id });
+        return;
+      }
+
       // Encrypt message
       const encrypted = await phase4Client.encrypt({
         to: connection.theirDid,
         plaintext: JSON.stringify(message),
         from: connection.myDid,
       });
+      logger.debug('Message encrypted', {
+        connectionId,
+        kid: encrypted.kid,
+        encryptionType: encrypted.from ? 'authcrypt' : 'anoncrypt',
+      });
 
-      // Send to peer endpoint
-      await this.sendToEndpoint(connection.theirEndpoint, encrypted.jwe);
+      // Send to peer endpoint, include recipient DID so transport can decrypt
+      await this.sendToEndpoint(connection.theirEndpoint, encrypted.jwe, connection.theirDid);
 
       // Update message state
       await messageRepository.updateState(storedMessage.id, 'sent');
 
       logger.info('Outbound message sent successfully', {
         messageId: message.id,
+        messageType: message.type,
+        from: message.from,
+        to: message.to,
+        connectionId,
         endpoint: connection.theirEndpoint,
       });
     } catch (error) {
@@ -170,18 +224,24 @@ export class MessageRouter {
 
   /**
    * Send encrypted message to peer endpoint
+   * @param endpoint - Peer's service endpoint URL
+   * @param jwe - Encrypted JWE string
+   * @param connectionId - Connection ID for logging
    */
-  private async sendToEndpoint(endpoint: string, encryptedMessage: string): Promise<void> {
+  private async sendToEndpoint(endpoint: string, encryptedMessage: string, recipientDid: string): Promise<void> {
     logger.debug('Sending to endpoint', { endpoint });
 
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 30000); // 30s timeout
 
     try {
-      const response = await fetch(endpoint, {
+      // Append ?did= if not already supplied (transport allows query or header)
+      const url = endpoint.includes('?') ? `${endpoint}&did=${encodeURIComponent(recipientDid)}` : `${endpoint}?did=${encodeURIComponent(recipientDid)}`;
+      const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/didcomm-encrypted+json',
+          'X-Recipient-DID': recipientDid,
         },
         body: encryptedMessage,
         signal: controller.signal,
@@ -197,7 +257,7 @@ export class MessageRouter {
       }
 
       logger.debug('Message delivered to endpoint', {
-        endpoint,
+        endpoint: url,
         status: response.status,
       });
     } catch (error) {

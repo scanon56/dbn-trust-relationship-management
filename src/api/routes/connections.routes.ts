@@ -35,6 +35,7 @@ router.post(
           connection: result.connection,
           invitationUrl: result.invitationUrl,
           invitation: result.invitation,
+          correlationId: (result.invitation as any)['dbn:cid'] || (result.connection.metadata?.correlationId as string) || null,
         },
       });
     } catch (error) {
@@ -56,7 +57,10 @@ router.post(
 
       res.status(201).json({
         success: true,
-        data: { connection },
+        data: { 
+          connection,
+          correlationId: (connection.metadata?.correlationId as string) || null,
+        },
       });
     } catch (error) {
       next(error);
@@ -121,7 +125,10 @@ router.get(
 
       res.status(200).json({
         success: true,
-        data: { connection },
+        data: { 
+          connection,
+          correlationId: (connection.metadata?.correlationId as string) || null,
+        },
       });
     } catch (error) {
       next(error);
@@ -143,10 +150,12 @@ router.patch(
         req.params.id,
         req.body
       );
-
       res.status(200).json({
         success: true,
-        data: { connection },
+        data: {
+          connection,
+          correlationId: (connection.metadata?.correlationId as string) || null,
+        },
       });
     } catch (error) {
       next(error);
@@ -213,6 +222,7 @@ router.get(
           protocols: connection.theirProtocols,
           services: connection.theirServices,
           endpoint: connection.theirEndpoint,
+          correlationId: (connection.metadata?.correlationId as string) || null,
         },
       });
     } catch (error) {
@@ -231,11 +241,29 @@ router.post(
   async (req: Request, res: Response, next: NextFunction) => {
     try {
       const result = await connectionManager.ping(req.params.id);
-
+      const connection = await connectionManager.getConnection(req.params.id);
       res.status(200).json({
         success: true,
-        data: result,
+        data: { ...result, correlationId: (connection.metadata?.correlationId as string) || null },
       });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * Manually activate connection (temporary helper)
+ * POST /api/v1/connections/:id/activate
+ */
+router.post(
+  '/:id/activate',
+  validateParams(uuidParamSchema),
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const connection = await connectionManager.activateConnection(req.params.id);
+      res.status(200).json({ success: true, data: { connection, correlationId: (connection.metadata?.correlationId as string) || null } });
+      // Could optionally include correlationId here, but activation is dev helper; keep minimal.
     } catch (error) {
       next(error);
     }

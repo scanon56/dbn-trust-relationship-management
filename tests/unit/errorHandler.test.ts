@@ -12,7 +12,8 @@ function createRes() {
 
 describe('errorHandler middleware', () => {
   it('handles known TrustManagementError', () => {
-    const err = new TrustManagementError('known', 'KNOWN_CODE', 418, {});
+    // Constructor: (message, code, details?, statusCode?)
+    const err = new TrustManagementError('known', 'KNOWN_CODE', {}, 418);
     const req: any = { path: '/test', method: 'GET' };
     const res = createRes();
     const next = jest.fn();

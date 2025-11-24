@@ -50,7 +50,11 @@ export class TrustPingProtocol implements ProtocolHandler {
 
     // Update connection last active time
     if (context.connectionId) {
-      await connectionRepository.updateState(context.connectionId, 'active');
+      const connection = await connectionRepository.findById(context.connectionId);
+      if (connection && connection.state === 'responded') {
+        // Trust ping can serve as confirming message from invitee
+        await connectionRepository.updateState(context.connectionId, 'complete', 'Trust ping confirmation');
+      }
     }
 
     // Check if response is requested
@@ -117,7 +121,10 @@ export class TrustPingProtocol implements ProtocolHandler {
 
     // Update connection as active
     if (context.connectionId) {
-      await connectionRepository.updateState(context.connectionId, 'active');
+      const connection = await connectionRepository.findById(context.connectionId);
+      if (connection && connection.state === 'responded') {
+        await connectionRepository.updateState(context.connectionId, 'complete', 'Trust ping response confirmation');
+      }
     }
 
     // TODO: Emit event for application to know ping succeeded
