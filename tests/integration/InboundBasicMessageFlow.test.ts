@@ -103,5 +103,38 @@ describe('Integration: Full inbound basicmessage flow', () => {
 
     // Verify phase4 decrypt called with recipient DID and provided JWE
     expect(mockedPhase4.decrypt).toHaveBeenCalledWith({ did: recipientDid, jwe: 'fake-jwe-placeholder' });
+
+    // DB persistence assertion
+    const dbResult = await pool.query("SELECT message_id, direction, body, state, metadata FROM messages WHERE message_id = $1", [inboundMessage.id]);
+    expect(dbResult.rowCount).toBe(1);
+    const row = dbResult.rows[0];
+    expect(row.direction).toBe('inbound');
+    expect(row.state).toBe('processed');
+    expect(row.body?.content).toBe('Inbound Hello');
+    expect(row.metadata).toEqual(expect.objectContaining({ encrypted: true }));
+  });
+
+  test('POST /didcomm rejects invalid content-type', async () => {
+    const resp = await fetch(`http://localhost:${port}/didcomm?did=did:web:example.com:recipient`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ fake: 'data' }),
+    });
+    expect(resp.status).toBe(415);
+    const json: any = await resp.json();
+    expect(json.success).toBe(false);
+    expect(json.error?.code).toBe('INVALID_CONTENT_TYPE');
+  });
+
+  test('POST /didcomm missing recipient DID returns 400', async () => {
+    const resp = await fetch(`http://localhost:${port}/didcomm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/didcomm-encrypted+json' },
+      body: 'ignored',
+    });
+    expect(resp.status).toBe(400);
+    const json: any = await resp.json();
+    expect(json.success).toBe(false);
+    expect(json.error?.code).toBe('NO_RECIPIENT_DID');
   });
 });
