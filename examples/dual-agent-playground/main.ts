@@ -16,6 +16,10 @@ interface MessageRecord {
   direction?: 'inbound' | 'outbound';
 }
 
+// Track displayed messages to avoid duplicates when polling
+const displayedMessageIds: Record<'a' | 'b', Set<string>> = { a: new Set(), b: new Set() };
+let messagePollers: Record<'a'|'b', number | null> = { a: null, b: null };
+
 function getApiBase(panel: 'a' | 'b'): string {
   const inputId = panel === 'a' ? 'aApiBase' : 'bApiBase';
   const value = (document.getElementById(inputId) as HTMLInputElement | null)?.value?.trim();
@@ -42,6 +46,40 @@ function addMsg(panel: 'a' | 'b', message: MessageRecord): void {
   const content = message.body?.content ?? '(no body)';
   div.innerHTML = `<strong>${typeName}</strong> - <span>${content}</span>`;
   list.prepend(div);
+  if (message.id) {
+    displayedMessageIds[panel].add(message.id);
+  }
+}
+
+async function fetchAndRenderMessages(panel: 'a' | 'b', connectionId: string) {
+  try {
+    const data = await api<{ messages: MessageRecord[] }>(panel, `/api/v1/messages?connectionId=${connectionId}`);
+    // Render only new messages
+    const newMessages = data.messages.filter(m => !m.id || !displayedMessageIds[panel].has(m.id));
+    newMessages.forEach(m => addMsg(panel, m));
+    if (newMessages.length) {
+      log(panel, `Synced ${newMessages.length} new message(s)`);
+    }
+  } catch (e: any) {
+    log(panel, 'Message sync error: ' + e.message);
+  }
+}
+
+function startMessagePolling(panel: 'a' | 'b', connectionId: string) {
+  // Clear existing poller
+  if (messagePollers[panel]) {
+    clearInterval(messagePollers[panel]!);
+    messagePollers[panel] = null;
+  }
+  const autoSyncCheckbox = document.getElementById(panel === 'a' ? 'aAutoSync' : 'bAutoSync') as HTMLInputElement | null;
+  const interval = () => {
+    if (!autoSyncCheckbox || autoSyncCheckbox.checked) {
+      fetchAndRenderMessages(panel, connectionId);
+    }
+  };
+  // Initial immediate fetch
+  interval();
+  messagePollers[panel] = window.setInterval(interval, 3000); // every 3s
 }
 
 async function api<T>(panel: 'a' | 'b', path: string, opts: RequestInit = {}): Promise<T> {
@@ -141,6 +179,7 @@ async function pollConnection(panel: 'a' | 'b', id: string) {
           el<HTMLButtonElement>('bRefreshMessagesBtn').disabled = false;
         }
         log(panel, 'Connection complete');
+        startMessagePolling(panel, id);
       }
     } catch (e: any) {
       if (attempts % 5 === 0) log(panel, 'Poll error: ' + e.message);
@@ -205,10 +244,8 @@ el<HTMLButtonElement>('aRefreshMessagesBtn').addEventListener('click', async () 
   const id = el('aConnectionId').textContent.trim();
   if (!id || id === '(none)') return;
   try {
-    const data = await api<{ messages: MessageRecord[] }>('a', `/api/v1/messages?connectionId=${id}`);
-    el('aMessages').innerHTML = '';
-    data.messages.forEach((m) => addMsg('a', m));
-    log('a', 'Messages refreshed');
+    await fetchAndRenderMessages('a', id);
+    log('a', 'Manual sync complete');
   } catch (e: any) {
     log('a', 'Refresh failed: ' + e.message);
     checkTransport('a');
@@ -266,10 +303,8 @@ el<HTMLButtonElement>('bRefreshMessagesBtn').addEventListener('click', async () 
   const id = el('bConnectionId').textContent.trim();
   if (!id || id === '(none)') return;
   try {
-    const data = await api<{ messages: MessageRecord[] }>('b', `/api/v1/messages?connectionId=${id}`);
-    el('bMessages').innerHTML = '';
-    data.messages.forEach((m) => addMsg('b', m));
-    log('b', 'Messages refreshed');
+    await fetchAndRenderMessages('b', id);
+    log('b', 'Manual sync complete');
   } catch (e: any) {
     log('b', 'Refresh failed: ' + e.message);
     checkTransport('b');
