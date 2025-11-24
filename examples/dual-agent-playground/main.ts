@@ -21,6 +21,14 @@ const displayedMessageIds: Record<'a' | 'b', Set<string>> = { a: new Set(), b: n
 let messagePollers: Record<'a'|'b', number | null> = { a: null, b: null };
 let sseSources: Record<'a'|'b', EventSource | null> = { a: null, b: null };
 
+function setLiveIndicator(panel: 'a' | 'b', status: string, color?: string) {
+  const id = panel === 'a' ? 'aLiveIndicator' : 'bLiveIndicator';
+  const elNode = document.getElementById(id);
+  if (!elNode) return;
+  elNode.textContent = `SSE: ${status}`;
+  if (color) elNode.style.color = color; else elNode.style.color = '';
+}
+
 function getApiBase(panel: 'a' | 'b'): string {
   const inputId = panel === 'a' ? 'aApiBase' : 'bApiBase';
   const value = (document.getElementById(inputId) as HTMLInputElement | null)?.value?.trim();
@@ -92,6 +100,10 @@ function startLiveMessages(panel: 'a' | 'b') {
   const base = getApiBase(panel);
   try {
     const src = new EventSource(base + '/api/v1/events/basicmessages');
+    setLiveIndicator(panel, 'connecting');
+    src.onopen = () => {
+      setLiveIndicator(panel, 'connected', '#4ade80');
+    };
     src.addEventListener('basicmessage', (evt: MessageEvent) => {
       try {
         const payload = JSON.parse(evt.data);
@@ -113,12 +125,14 @@ function startLiveMessages(panel: 'a' | 'b') {
     });
     src.onerror = () => {
       log(panel, 'SSE error; reconnecting...');
+      setLiveIndicator(panel, 'error', '#f87171');
       setTimeout(() => startLiveMessages(panel), 3000);
     };
     sseSources[panel] = src;
     log(panel, 'Subscribed to live messages');
   } catch (e: any) {
     log(panel, 'Failed to start live messages: ' + e.message);
+    setLiveIndicator(panel, 'failed', '#f87171');
   }
 }
 

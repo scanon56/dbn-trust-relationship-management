@@ -89,10 +89,11 @@
       <div class="divider"></div>
       <div>
         <strong>Messages</strong>
-        <div class="small" style="margin:.25rem 0 .35rem">
+        <div class="small" style="margin:.25rem 0 .35rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem">
           <label style="display:inline-flex;align-items:center;gap:.35rem;font-size:.65rem;cursor:pointer">
             <input type="checkbox" id="aAutoSync" checked /> Auto Sync
           </label>
+          <span id="aLiveIndicator" class="mono" style="font-size:.55rem;opacity:.75" title="Server-Sent Events status">SSE: idle</span>
         </div>
         <div class="messages" id="aMessages"></div>
       </div>
@@ -141,10 +142,11 @@
       <div class="divider"></div>
       <div>
         <strong>Messages</strong>
-        <div class="small" style="margin:.25rem 0 .35rem">
+        <div class="small" style="margin:.25rem 0 .35rem;display:flex;justify-content:space-between;align-items:center;gap:.5rem">
           <label style="display:inline-flex;align-items:center;gap:.35rem;font-size:.65rem;cursor:pointer">
             <input type="checkbox" id="bAutoSync" checked /> Auto Sync
           </label>
+          <span id="bLiveIndicator" class="mono" style="font-size:.55rem;opacity:.75" title="Server-Sent Events status">SSE: idle</span>
         </div>
         <div class="messages" id="bMessages"></div>
       </div>

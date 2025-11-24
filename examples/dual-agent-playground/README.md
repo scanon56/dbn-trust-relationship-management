@@ -134,6 +134,8 @@ Manual activation buttons are deprecated; handshake auto-completes when both ser
 - Correlation ID: Invitation URLs carry a `dbn:cid` inside the base64 `_oob` segment. Decode it to correlate Create → Accept → Request logs.
 - Polling: The UI polls connection state every 2s until `complete` or timeout (~2 min).
 - Transport Health: Each panel shows DIDComm transport health (GET `/didcomm/health`). Values: `healthy`, `network`, `http <code>`, or `unknown`. A failing transport prevents handshake messages from arriving.
+- Live Messages (SSE): The playground auto-subscribes each panel to `GET /api/v1/events/basicmessages` after invitation creation / acceptance. Incoming BasicMessage DIDComm packets appear instantly with a green inbound indicator. The "SSE" status badge shows `connected`, `error`, or `idle`.
+- Test Flag Warning: If you accidentally start either backend with `SKIP_DELIVERY=true`, outbound messages will NOT be transported; SSE will never receive inbound events (appears as a regression). Ensure `SKIP_DELIVERY` is unset/`false` for interactive multi-agent demos.
 
 ## Extending
 - Add Trust Ping: POST a trust-ping DIDComm message with a different `type` value.
@@ -150,6 +152,7 @@ Manual activation buttons are deprecated; handshake auto-completes when both ser
 | Transport shows `http 415` | DIDComm content-type mismatch; backend must accept `application/didcomm-encrypted+json`. |
 | Cannot send message | Wait until status shows `complete`. |
 | Empty message list | Use **Refresh Messages** after sending or acceptance. |
+| No live (green) inbound messages but polling works | Verify SSE endpoint reachable (`curl -i http://localhost:3001/api/v1/events/basicmessages`), and confirm `SKIP_DELIVERY` is not set to `true`. |
 | CORS errors | Confirm server middleware; adjust if cross-origin hosting playground. |
 
 ## Cleanup
