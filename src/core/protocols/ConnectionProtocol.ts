@@ -313,6 +313,16 @@ export class ConnectionProtocol implements ProtocolHandler {
         };
         await messageRouter.routeOutbound(ackMessage, connection.id);
         logger.info('Auto connection ack sent', { connectionId: connection.id, to: theirDid });
+        // Mark local (invitee side) connection complete after sending ack
+        const refreshed = await connectionRepository.findById(connection.id);
+        if (refreshed && refreshed.state === 'responded') {
+          await connectionRepository.updateState(connection.id, 'complete', 'Sent connection ack (finalization)');
+          logger.info('Connection completed (invitee side) after sending ack', {
+            connectionId: connection.id,
+            previousState: 'responded',
+            newState: 'complete',
+          });
+        }
       } catch (error) {
         logger.warn('Failed to auto-send connection ack', { error });
       }
@@ -355,6 +365,7 @@ export class ConnectionProtocol implements ProtocolHandler {
         logger.info('Connection completed via ack', {
           connectionId: connection.id,
           previousState: prev,
+          newState: 'complete',
         });
       } else {
         logger.debug('Ack received but connection already complete', { connectionId: connection.id });
